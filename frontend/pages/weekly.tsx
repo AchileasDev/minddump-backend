@@ -12,8 +12,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LineChart,
-  Line,
   AreaChart,
   Area,
 } from 'recharts';
@@ -224,9 +222,9 @@ export default function WeeklySummaryPage() {
               >
                 <h3 className="font-medium text-gray-700 mb-2">Top Emotions</h3>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {topEmotions.map((emotion, index) => (
+                  {topEmotions.map((emotion) => (
                     <span 
-                      key={index} 
+                      key={emotion} 
                       className="bg-[#F8E4EC] text-[#EC7CA5] px-3 py-1 rounded-full text-sm"
                     >
                       {emotion}
@@ -308,7 +306,7 @@ export default function WeeklySummaryPage() {
                           boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                         }}
                       />
-                      {topEmotions.map((emotion, index) => (
+                      {topEmotions.map((emotion) => (
                         <Area
                           key={emotion}
                           type="monotone"

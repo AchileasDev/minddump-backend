@@ -1,10 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-interface ReflectionQuestion {
-  question: string;
-  context?: string;
-}
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse

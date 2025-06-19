@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { FiHeart, FiArrowLeft } from 'react-icons/fi';
+import { FiArrowLeft } from 'react-icons/fi';
+
+interface FavoriteQuestion {
+  id: string;
+  question: string;
+}
 
 export default function FavoritesPage() {
-  const [favorites, setFavorites] = useState<FavoriteQuestion[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [favorites] = useState<FavoriteQuestion[]>([]);
+  const [isLoading] = useState(true);
+  const [error] = useState<string | null>(null);
   const router = useRouter();
 
   return (
@@ -58,8 +63,18 @@ export default function FavoritesPage() {
             <div className="text-center py-12">
               <div className="text-red-500 text-xl">{error}</div>
             </div>
+          ) : favorites.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-gray-500 text-xl">No favorite questions yet.</div>
+            </div>
           ) : (
-            // ... rest of the existing code ...
+            <div className="space-y-4">
+              {favorites.map((favorite) => (
+                <div key={favorite.id} className="bg-white p-4 rounded-lg shadow">
+                  <p className="text-gray-800">{favorite.question}</p>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

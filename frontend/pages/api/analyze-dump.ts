@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { analyzeDumpWithGemini } from '../../../../backend/src/utils/gemini';
+import { analyzeDumpWithGemini } from '../../src/utils/gemini';
 
 export default async function handler(
   req: NextApiRequest,
@@ -29,7 +29,7 @@ export default async function handler(
     }
 
     // Get analysis from Gemini
-    const analysis = await analyzeDumpWithGemini(text);
+    const analysis = await analyzeDumpWithGemini({ content: text });
 
     // Return the analysis
     return res.status(200).json({ 

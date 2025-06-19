@@ -1,6 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { subDays, format, eachDayOfInterval } from 'date-fns';
 
 interface WeeklyStats {
@@ -25,14 +24,15 @@ export default async function handler(
 
   try {
     // Create authenticated Supabase client
-    const cookieStore = cookies();
+    // const cookieStore = cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           get(name: string) {
-            return cookieStore.get(name)?.value;
+            // Use req.cookies if available, otherwise return undefined
+            return (req.cookies && req.cookies[name]) || undefined;
           },
         },
       }

@@ -10,7 +10,11 @@ const MOCK_ENTRIES = [
     id: '1',
     date: '2023-09-15',
     title: 'Feeling overwhelmed',
-    content: 'Too many deadlines this week. Feeling stressed but trying to stay positive.\n\nI need to figure out a better way to manage my time. Maybe I should try that Pomodoro technique everyone talks about? I also think I need to be more assertive about saying no to additional tasks when I'm already at capacity.\n\nTomorrow I'll try to wake up earlier and tackle the most important task first.',
+    content: `Too many deadlines this week. Feeling stressed but trying to stay positive.
+
+I need to figure out a better way to manage my time. Maybe I should try that Pomodoro technique everyone talks about? I also think I need to be more assertive about saying no to additional tasks when I'm already at capacity.
+
+Tomorrow I'll try to wake up earlier and tackle the most important task first.`,
     mood: 'anxious',
     sentiment: 'negative',
     insight: 'Consider breaking down large tasks into smaller, manageable steps to reduce feeling overwhelmed.'
@@ -19,7 +23,11 @@ const MOCK_ENTRIES = [
     id: '2',
     date: '2023-09-13',
     title: 'Great day!',
-    content: 'Had a productive meeting and then went for a long walk in the park. Feeling refreshed.\n\nThe meeting with the design team went really well. They loved my ideas, and we're moving forward with the project.\n\nAfter work, I went for a 45-minute walk at the nearby park. The weather was perfect, and I could feel my stress melting away with each step.',
+    content: `Had a productive meeting and then went for a long walk in the park. Feeling refreshed.
+
+The meeting with the design team went really well. They loved my ideas, and we're moving forward with the project.
+
+After work, I went for a 45-minute walk at the nearby park. The weather was perfect, and I could feel my stress melting away with each step.`,
     mood: 'happy',
     sentiment: 'positive',
     insight: 'Nature walks appear to have a positive impact on your mood and productivity.'
@@ -28,7 +36,11 @@ const MOCK_ENTRIES = [
     id: '3',
     date: '2023-09-10',
     title: 'Mixed feelings today',
-    content: 'Started the day feeling down but had a good conversation with a friend that lifted my spirits.\n\nWoke up feeling quite low for no particular reason. Just one of those days, I guess. Work was somewhat monotonous. \n\nAlex called in the evening, and we had a long chat about life, future plans, and some funny memories. It's amazing how a good conversation can change your entire outlook.',
+    content: `Started the day feeling down but had a good conversation with a friend that lifted my spirits.
+
+Woke up feeling quite low for no particular reason. Just one of those days, I guess. Work was somewhat monotonous.
+
+Alex called in the evening, and we had a long chat about life, future plans, and some funny memories. It's amazing how a good conversation can change your entire outlook.`,
     mood: 'mixed',
     sentiment: 'neutral',
     insight: 'Social connections seem to play an important role in improving your mood when feeling low.'

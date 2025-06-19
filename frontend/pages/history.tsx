@@ -1,26 +1,48 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { useAuth } from '../hooks/useAuth';
-import { useJournalEntries } from '../hooks/useJournalEntries';
-import { JournalEntryCard } from '../components/JournalEntryCard';
+import { useAuth } from '@/hooks/useAuth';
+import { useJournalEntries } from '@/hooks/useJournalEntries';
+import JournalEntryCard from '@/components/JournalEntryCard';
 import { FiArrowLeft, FiSearch, FiCalendar, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { format, subMonths, startOfDay, endOfDay } from 'date-fns';
 
+interface JournalEntry {
+  id: string;
+  content: string;
+  created_at: string;
+  reflection_questions: Array<{
+    question: string;
+    context?: string;
+  }>;
+  favorite_questions: string[];
+  is_favorite: boolean;
+  analysis?: {
+    sentiment: string;
+    emotions: string[];
+    summary: string;
+  };
+}
+
 export default function History() {
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<{ start: Date; end: Date } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [error] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isPremium] = useState(true); // TODO: Replace with actual premium check
+  const router = useRouter();
 
-  const { entries, isLoading, error, toggleFavorite, isTogglingFavorite } = useJournalEntries({
+  useJournalEntries({
     page,
     pageSize: 10,
     searchQuery,
     dateFilter: dateFilter || undefined,
   });
+
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -50,11 +72,110 @@ export default function History() {
     setShowDatePicker(false);
   };
 
-  const handleToggleFavorite = (entryId: string, question: string) => {
-    toggleFavorite({ entryId, question });
+  const handleToggleFavorite = async (entryId: string, question: string) => {
+    try {
+      const response = await fetch('/api/toggle-favorite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ entryId, question }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to toggle favorite');
+      }
+
+      // Update local state
+      setEntries(entries.map(entry => {
+        if (entry.id === entryId) {
+          const favoriteQuestions = entry.favorite_questions.includes(question)
+            ? entry.favorite_questions.filter(q => q !== question)
+            : [...entry.favorite_questions, question];
+          return { ...entry, favorite_questions: favoriteQuestions };
+        }
+        return entry;
+      }));
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
   };
 
-  if (authLoading || isLoading) {
+  const handleShare = async (entry: JournalEntry) => {
+    try {
+      await navigator.share({
+        title: 'My Journal Entry',
+        text: entry.content,
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
+  const handleCopy = async (entry: JournalEntry) => {
+    try {
+      await navigator.clipboard.writeText(entry.content);
+      // TODO: Show success toast
+    } catch (error) {
+      console.error('Error copying:', error);
+    }
+  };
+
+  const handleDelete = async (entryId: string) => {
+    try {
+      const response = await fetch(`/api/entries/${entryId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete entry');
+      }
+
+      // Update local state
+      setEntries(entries.filter(entry => entry.id !== entryId));
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+    }
+  };
+
+  const handleAnalyze = async (entry: JournalEntry) => {
+    if (!isPremium) {
+      return;
+    }
+
+    try {
+      setIsAnalyzing(true);
+      const response = await fetch('/api/analyze-dump', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content: entry.content }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze entry');
+      }
+
+      const analysis = await response.json();
+
+      // Update local state
+      setEntries(entries.map(e => {
+        if (e.id === entry.id) {
+          return { ...e, analysis };
+        }
+        return e;
+      }));
+    } catch (error) {
+      console.error('Error analyzing entry:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const buttonLabel: string = (Boolean(searchQuery) || Boolean(dateFilter)) ? 'Clear Filters' : 'Write Your First Entry';
+
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#EC7CA5]"></div>
@@ -174,7 +295,7 @@ export default function History() {
                   onClick={() => router.push('/dashboard')}
                   className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#EC7CA5] hover:bg-[#EC7CA5]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EC7CA5]"
                 >
-                  {searchQuery || dateFilter ? 'Clear Filters' : 'Write Your First Entry'}
+                  {buttonLabel}
                 </button>
               </div>
             </div>
@@ -186,11 +307,17 @@ export default function History() {
                     key={entry.id}
                     id={entry.id}
                     content={entry.content}
-                    reflectionQuestions={entry.reflection_questions}
+                    createdAt={new Date(entry.created_at)}
+                    reflectionQuestions={entry.reflection_questions.map((q, idx) => ({ ...q, id: `r-${idx}` }))}
                     favoriteQuestions={entry.favorite_questions}
-                    createdAt={entry.created_at}
+                    isFavorite={entry.is_favorite}
                     onToggleFavorite={handleToggleFavorite}
-                    isTogglingFavorite={isTogglingFavorite}
+                    onShare={() => handleShare(entry)}
+                    onCopy={() => handleCopy(entry)}
+                    onDelete={() => handleDelete(entry.id)}
+                    onAnalyze={() => handleAnalyze(entry)}
+                    isAnalyzing={isAnalyzing}
+                    isPremium={isPremium}
                   />
                 ))}
               </div>

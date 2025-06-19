@@ -1,24 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
-import { FiHeart, FiShare2, FiCopy, FiX } from 'react-icons/fi';
-import { analyzeEntry } from '@/lib/analyzeEntry';
+import { FiHeart, FiShare2, FiCopy } from 'react-icons/fi';
 import { PremiumFeature } from './PremiumFeature';
 import toast from 'react-hot-toast';
 
 interface ReflectionQuestion {
+  id: string;
   question: string;
-  context?: string;
 }
 
 interface JournalEntryCardProps {
   id: string;
   content: string;
-  createdAt: string;
+  createdAt: Date;
   reflectionQuestions: ReflectionQuestion[];
   favoriteQuestions: string[];
-  isTogglingFavorite: string | null;
+  isFavorite?: boolean;
   onToggleFavorite: (entryId: string, question: string) => void;
+  onShare: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+  onAnalyze: () => void;
+  isAnalyzing: boolean;
+  isPremium: boolean;
 }
 
 export default function JournalEntryCard({
@@ -27,11 +32,16 @@ export default function JournalEntryCard({
   createdAt,
   reflectionQuestions,
   favoriteQuestions,
-  isTogglingFavorite,
+  isFavorite,
   onToggleFavorite,
+  onShare,
+  onCopy,
+  onDelete,
+  onAnalyze,
+  isAnalyzing,
+  isPremium,
 }: JournalEntryCardProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [questions, setQuestions] = useState(reflectionQuestions);
+  const [questions] = useState(reflectionQuestions);
   const [togglingQuestion, setTogglingQuestion] = useState<string | null>(null);
   const [showShareMenu, setShowShareMenu] = useState(false);
   const shareMenuRef = useRef<HTMLDivElement>(null);
@@ -72,38 +82,10 @@ export default function JournalEntryCard({
   };
 
   const handleAnalyze = async () => {
-    try {
-      setIsAnalyzing(true);
-      const result = await analyzeEntry(content);
-      const newQuestions = result.questions.map((q: string) => ({ question: q }));
-      
-      // Update UI immediately
-      setQuestions(newQuestions);
-
-      // Save to backend in the background
-      try {
-        const response = await fetch('/api/update-questions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            entryId: id,
-            questions: newQuestions,
-          }),
-        });
-
-        if (!response.ok) {
-          console.error('Failed to save questions to backend:', await response.text());
-        }
-      } catch (error) {
-        console.error('Error saving questions to backend:', error);
-      }
-    } catch (error) {
-      console.error('Error analyzing entry:', error);
-    } finally {
-      setIsAnalyzing(false);
+    if (!isPremium) {
+      return;
     }
+    onAnalyze();
   };
 
   const handleToggleFavorite = async (question: string) => {
@@ -196,6 +178,35 @@ export default function JournalEntryCard({
 
       <div className="prose max-w-none mb-6">
         <p className="text-gray-800 whitespace-pre-wrap">{content}</p>
+        {isFavorite && (
+          <span style={{ color: "gold", fontWeight: "bold" }}>
+            ⭐ Αγαπημένο
+          </span>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center">
+        <button
+          onClick={onCopy}
+          className="text-gray-500 hover:text-gray-700"
+          title="Copy to clipboard"
+        >
+          📋
+        </button>
+        {onShare && (
+          <button onClick={onShare} className="text-gray-500 hover:text-gray-700" title="Share">
+            📤
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="text-red-500 hover:text-red-700"
+            title="Delete entry"
+          >
+            🗑️
+          </button>
+        )}
       </div>
 
       <PremiumFeature
@@ -227,21 +238,20 @@ export default function JournalEntryCard({
             )}
           </button>
         ) : (
-          <div className="space-y-4">
-            {questions.map((q, index) => (
-              <div key={index} className="flex items-start gap-3">
+          <div className="space-y-2">
+            {reflectionQuestions.map((q: ReflectionQuestion) => (
+              <div key={q.id} className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">{q.question}</span>
                 <button
                   onClick={() => handleToggleFavorite(q.question)}
-                  disabled={togglingQuestion === q.question}
-                  className={`mt-1 p-1 rounded-full transition-colors ${
+                  className={`p-1 rounded-full ${
                     favoriteQuestions.includes(q.question)
-                      ? 'text-red-500 hover:text-red-600'
-                      : 'text-gray-400 hover:text-gray-500'
+                      ? 'text-[#EC7CA5]'
+                      : 'text-gray-400 hover:text-[#EC7CA5]'
                   }`}
                 >
-                  <FiHeart className="w-5 h-5" />
+                  <FiHeart className="w-4 h-4" />
                 </button>
-                <p className="text-gray-700">{q.question}</p>
               </div>
             ))}
           </div>

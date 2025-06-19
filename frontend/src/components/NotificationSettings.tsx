@@ -8,11 +8,7 @@ export const NotificationSettings = () => {
 
   const handleToggleNotifications = async () => {
     if (!isPermissionGranted) {
-      const granted = await requestPermission();
-      if (!granted) {
-        // Show error toast or message
-        console.log('Notification permission denied');
-      }
+      await requestPermission();
     }
   };
 

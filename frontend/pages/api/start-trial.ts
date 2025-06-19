@@ -17,10 +17,10 @@ export default async function handler(
       {
         cookies: {
           get: (name) => req.cookies[name],
-          set: (name, value, options) => {
+          set: (name, value) => {
             res.setHeader('Set-Cookie', `${name}=${value}`);
           },
-          remove: (name, options) => {
+          remove: (name) => {
             res.setHeader('Set-Cookie', `${name}=`);
           },
         },
