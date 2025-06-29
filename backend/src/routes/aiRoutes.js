@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/auth');
+const { requireAuth, requirePremium } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
-const { analyzeText, generateWeeklySummary } = require('../utils/aiUtils');
+const { analyzeText, generateWeeklySummary, generateInsightsFromText } = require('../utils/aiUtils');
+const { generateInsightsPrompt } = require('../utils/promptUtils');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -10,8 +11,43 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+// New route for generating insights from multiple entries (premium feature)
+router.post('/insights', [requireAuth, requirePremium], async (req, res) => {
+  try {
+    const { entries } = req.body;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ message: 'An array of entries is required.' });
+    }
+
+    // Generate the prompt and get insights
+    const prompt = generateInsightsPrompt(entries);
+    const insights = await generateInsightsFromText(prompt);
+
+    res.json(insights);
+  } catch (error) {
+    console.error('Error in /insights route:', error);
+    res.status(500).json({ message: 'Error generating insights.' });
+  }
+});
+
+// New route for analyzing a single dump (premium feature)
+router.post('/analyze-dump', [requireAuth, requirePremium], async (req, res) => {
+  try {
+    const { content } = req.body;
+    if (!content) {
+      return res.status(400).json({ message: 'Content is required for analysis.' });
+    }
+
+    const analysis = await analyzeText(content);
+    res.json(analysis);
+  } catch (error) {
+    console.error('Error in /analyze-dump route:', error);
+    res.status(500).json({ message: 'Error analyzing dump.' });
+  }
+});
+
 // Analyze text
-router.post('/analyze', auth, async (req, res) => {
+router.post('/analyze', requireAuth, async (req, res) => {
   try {
     const { text } = req.body;
     if (!text) {
@@ -27,7 +63,7 @@ router.post('/analyze', auth, async (req, res) => {
 });
 
 // Generate weekly summary
-router.get('/summary/weekly', auth, async (req, res) => {
+router.get('/summary/weekly', requireAuth, async (req, res) => {
   try {
     // Get dumps from the last 7 days
     const oneWeekAgo = new Date();
@@ -62,7 +98,7 @@ router.get('/summary/weekly', auth, async (req, res) => {
 });
 
 // Reprocess dumps with AI
-router.post('/reprocess', auth, async (req, res) => {
+router.post('/reprocess', requireAuth, async (req, res) => {
   try {
     const { dumpIds } = req.body;
     if (!Array.isArray(dumpIds)) {
@@ -113,7 +149,7 @@ router.post('/reprocess', auth, async (req, res) => {
 });
 
 // Get mood trends
-router.get('/trends/mood', auth, async (req, res) => {
+router.get('/trends/mood', requireAuth, async (req, res) => {
   try {
     const { period = 'week' } = req.query;
     let startDate = new Date();
@@ -162,6 +198,41 @@ router.get('/trends/mood', auth, async (req, res) => {
     console.error('Error fetching mood trends:', error);
     res.status(500).json({ message: 'Error fetching mood trends' });
   }
+});
+
+// This route proxies the request to the Supabase edge function for analyzing an entry.
+// A better long-term solution would be to call the AI model directly here.
+router.post('/analyze-entry', requireAuth, async (req, res) => {
+    const { content } = req.body;
+    if (!content) {
+        return res.status(400).json({ error: 'Content is required.' });
+    }
+
+    try {
+        const response = await fetch(
+            `${process.env.SUPABASE_URL}/functions/v1/analyze-entry`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                },
+                body: JSON.stringify({ content }),
+            }
+        );
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            console.error('Supabase function error:', errorBody);
+            return res.status(response.status).json({ error: 'Failed to analyze entry via Supabase function.' });
+        }
+
+        const data = await response.json();
+        return res.status(200).json(data);
+    } catch (error) {
+        console.error('Error proxying to analyze-entry function:', error);
+        return res.status(500).json({ error: 'Internal server error.' });
+    }
 });
 
 module.exports = router; 

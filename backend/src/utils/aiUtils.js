@@ -84,6 +84,51 @@ const analyzeText = async (text) => {
 };
 
 /**
+ * Calls the AI with a specific prompt expecting a structured JSON object in return.
+ * @param {string} prompt - The complete prompt to send to the AI.
+ * @returns {Promise<Object>} The parsed JSON object from the AI.
+ */
+const generateInsightsFromText = async (prompt) => {
+  const defaultResult = {
+    summary: 'AI analysis could not be completed at this time.',
+    mood_trend: 'unknown',
+    emotional_anchors: [],
+    behavioral_patterns: [],
+    warning_signs: [],
+    insightful_advice: 'Please try again later.',
+    ai_suggestions: []
+  };
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn('OpenAI API key not found, returning default insights.');
+    return defaultResult;
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo-0125", // Updated model
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.6,
+      max_tokens: 800, // Increased tokens for detailed insights
+    });
+
+    const content = response.choices[0].message.content.trim();
+    // Attempt to parse the string as JSON
+    try {
+      return JSON.parse(content);
+    } catch (parseError) {
+      console.error("Failed to parse AI response as JSON:", content);
+      // Return the raw content in the summary if parsing fails
+      return { ...defaultResult, summary: content };
+    }
+
+  } catch (error) {
+    console.error('AI insight generation error:', error);
+    return defaultResult;
+  }
+};
+
+/**
  * Generate a weekly summary based on a user's journal entries
  * @param {Array} entries - Array of journal entries
  * @returns {Promise<Object>} Summary object with insights and suggestions
@@ -175,5 +220,6 @@ const generateWeeklySummary = async (entries) => {
 
 module.exports = {
   analyzeText,
+  generateInsightsFromText,
   generateWeeklySummary
 }; 

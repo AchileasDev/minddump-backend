@@ -1,13 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/router';
-import { useAuth } from '../src/hooks/useAuth';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export default function Home() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user } = useAuthContext();
   const [isLoading, setIsLoading] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleStartTrial = async () => {
     if (!user) {
@@ -34,6 +55,13 @@ export default function Home() {
       // You might want to show an error message to the user here
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDownloadApp = () => {
+    const downloadSection = document.getElementById('download-section');
+    if (downloadSection) {
+      downloadSection.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -74,30 +102,92 @@ export default function Home() {
             </svg>
             <h1 className="text-3xl font-bold text-[#EC7CA5] ml-2">MindDump</h1>
           </div>
-          <nav>
+          
+          {/* Desktop Navigation */}
+          <nav className="hidden md:block">
             <ul className="flex space-x-6">
-              <li><a href="#features" className="text-gray-600 hover:text-[#EC7CA5]">Features</a></li>
-              <li><a href="#pricing" className="text-gray-600 hover:text-[#EC7CA5]">Pricing</a></li>
-              <li><a href="#faq" className="text-gray-600 hover:text-[#EC7CA5]">FAQ</a></li>
+              <li><a href="#features" className="text-gray-600 hover:text-[#EC7CA5] transition-colors">Features</a></li>
+              <li><a href="#pricing" className="text-gray-600 hover:text-[#EC7CA5] transition-colors">Pricing</a></li>
+              <li><a href="#faq" className="text-gray-600 hover:text-[#EC7CA5] transition-colors">FAQ</a></li>
             </ul>
           </nav>
+
+          {/* Mobile Navigation */}
+          <div className="md:hidden">
+            <button
+              ref={buttonRef}
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="text-gray-600 hover:text-[#EC7CA5] focus:outline-none focus:text-[#EC7CA5]"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                {isMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
+          </div>
         </header>
+
+        {/* Mobile Menu Dropdown */}
+        {isMenuOpen && (
+          <motion.div
+            ref={menuRef}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="md:hidden absolute top-20 left-4 right-4 bg-white rounded-lg shadow-lg border border-gray-100 z-50"
+          >
+            <nav className="py-4">
+              <ul className="space-y-2">
+                <li>
+                  <a 
+                    href="#features" 
+                    className="block px-4 py-2 text-gray-600 hover:text-[#EC7CA5] hover:bg-gray-50 transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Features
+                  </a>
+                </li>
+                <li>
+                  <a 
+                    href="#pricing" 
+                    className="block px-4 py-2 text-gray-600 hover:text-[#EC7CA5] hover:bg-gray-50 transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Pricing
+                  </a>
+                </li>
+                <li>
+                  <a 
+                    href="#faq" 
+                    className="block px-4 py-2 text-gray-600 hover:text-[#EC7CA5] hover:bg-gray-50 transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    FAQ
+                  </a>
+                </li>
+              </ul>
+            </nav>
+          </motion.div>
+        )}
 
         {/* Hero Section */}
         <motion.section 
-          className="py-12 md:py-20 text-center"
+          className="py-12 md:py-20 text-center px-4"
           initial="hidden"
           animate="visible"
           variants={staggerContainer}
         >
           <motion.h2 
-            className="text-4xl md:text-5xl font-bold text-gray-800 mb-4"
+            className="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-800 mb-4"
             variants={fadeIn}
           >
             Your mind deserves a safe space
           </motion.h2>
           <motion.p 
-            className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto"
+            className="text-lg md:text-xl text-gray-600 mb-12 max-w-2xl mx-auto"
             variants={fadeIn}
           >
             Express your thoughts freely and gain AI-powered insights to understand yourself better.
@@ -113,13 +203,16 @@ export default function Home() {
             >
               {isLoading ? 'Starting trial...' : 'Start 14-Day Free Trial'}
             </button>
-            <button className="px-8 py-4 border-2 border-[#EC7CA5] text-[#EC7CA5] rounded-lg hover:bg-[#FFF5F8] transition duration-300 font-medium">
-              Learn More
+            <button 
+              onClick={handleDownloadApp}
+              className="px-8 py-4 border-2 border-[#EC7CA5] text-[#EC7CA5] rounded-lg hover:bg-[#FFF5F8] transition duration-300 font-medium"
+            >
+              📥 Download the App
             </button>
           </motion.div>
           
           <motion.div 
-            className="max-w-lg mx-auto"
+            className="max-w-lg mx-auto px-4"
             variants={fadeIn}
           >
             <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -143,14 +236,14 @@ export default function Home() {
 
         {/* How it works section */}
         <motion.section 
-          className="py-16"
+          className="py-16 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
         >
           <motion.h2 
-            className="text-3xl font-bold text-center mb-12 text-gray-800"
+            className="text-2xl md:text-3xl font-bold text-center mb-12 text-gray-800"
             variants={fadeIn}
           >
             How it works
@@ -189,26 +282,26 @@ export default function Home() {
         {/* Why MindDump Section */}
         <motion.section 
           id="features"
-          className="py-16"
+          className="py-16 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
         >
           <motion.h2 
-            className="text-3xl font-bold text-center mb-12 text-gray-800"
+            className="text-2xl md:text-3xl font-bold text-center mb-12 text-gray-800"
             variants={fadeIn}
           >
             Why MindDump?
           </motion.h2>
           
-          <div className="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-md">
+          <div className="max-w-3xl mx-auto bg-white p-6 md:p-8 rounded-xl shadow-md">
             <ul className="space-y-4">
               <motion.li 
                 className="flex items-start"
                 variants={fadeIn}
               >
-                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3">
+                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3 flex-shrink-0">
                   <svg className="w-5 h-5 text-[#EC7CA5]" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
                   </svg>
@@ -220,7 +313,7 @@ export default function Home() {
                 className="flex items-start"
                 variants={fadeIn}
               >
-                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3">
+                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3 flex-shrink-0">
                   <svg className="w-5 h-5 text-[#EC7CA5]" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
                   </svg>
@@ -232,7 +325,7 @@ export default function Home() {
                 className="flex items-start"
                 variants={fadeIn}
               >
-                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3">
+                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3 flex-shrink-0">
                   <svg className="w-5 h-5 text-[#EC7CA5]" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
                   </svg>
@@ -244,7 +337,7 @@ export default function Home() {
                 className="flex items-start"
                 variants={fadeIn}
               >
-                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3">
+                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3 flex-shrink-0">
                   <svg className="w-5 h-5 text-[#EC7CA5]" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
                   </svg>
@@ -256,7 +349,7 @@ export default function Home() {
                 className="flex items-start"
                 variants={fadeIn}
               >
-                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3">
+                <div className="bg-[#F8E4EC] p-2 rounded-full mr-3 flex-shrink-0">
                   <svg className="w-5 h-5 text-[#EC7CA5]" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
                   </svg>
@@ -269,14 +362,14 @@ export default function Home() {
 
         {/* Testimonials */}
         <motion.section 
-          className="py-16"
+          className="py-16 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
         >
           <motion.h2 
-            className="text-3xl font-bold text-center mb-12 text-gray-800"
+            className="text-2xl md:text-3xl font-bold text-center mb-12 text-gray-800"
             variants={fadeIn}
           >
             What Our Users Say
@@ -321,14 +414,14 @@ export default function Home() {
         {/* Pricing Section */}
         <motion.section 
           id="pricing"
-          className="py-16"
+          className="py-16 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
         >
           <motion.h2 
-            className="text-3xl font-bold text-center mb-12 text-gray-800"
+            className="text-2xl md:text-3xl font-bold text-center mb-12 text-gray-800"
             variants={fadeIn}
           >
             Choose Your Plan
@@ -336,7 +429,7 @@ export default function Home() {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <motion.div 
-              className="bg-white p-8 rounded-xl shadow-md border border-gray-100"
+              className="bg-white p-6 md:p-8 rounded-xl shadow-md border border-gray-100"
               variants={fadeIn}
             >
               <h3 className="text-xl font-bold mb-2 text-gray-800">Free</h3>
@@ -367,7 +460,7 @@ export default function Home() {
             </motion.div>
             
             <motion.div 
-              className="bg-white p-8 rounded-xl shadow-xl border-2 border-[#EC7CA5] relative transform scale-105"
+              className="bg-white p-6 md:p-8 rounded-xl shadow-xl border-2 border-[#EC7CA5] relative transform scale-105"
               variants={fadeIn}
             >
               <div className="absolute top-0 right-0 bg-[#EC7CA5] text-white text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg">
@@ -407,7 +500,7 @@ export default function Home() {
             </motion.div>
             
             <motion.div 
-              className="bg-white p-8 rounded-xl shadow-md border border-gray-100"
+              className="bg-white p-6 md:p-8 rounded-xl shadow-md border border-gray-100"
               variants={fadeIn}
             >
               <h3 className="text-xl font-bold mb-2 text-gray-800">Premium Yearly</h3>
@@ -445,14 +538,14 @@ export default function Home() {
         {/* FAQ Section */}
         <motion.section 
           id="faq"
-          className="py-16"
+          className="py-16 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={staggerContainer}
         >
           <motion.h2 
-            className="text-3xl font-bold text-center mb-12 text-gray-800"
+            className="text-2xl md:text-3xl font-bold text-center mb-12 text-gray-800"
             variants={fadeIn}
           >
             Frequently Asked Questions
@@ -493,13 +586,13 @@ export default function Home() {
 
         {/* Newsletter Section */}
         <motion.section 
-          className="py-16"
+          className="py-16 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-100px" }}
           variants={fadeIn}
         >
-          <div className="max-w-3xl mx-auto bg-[#EC7CA5] bg-opacity-10 p-8 rounded-xl text-center">
+          <div className="max-w-3xl mx-auto bg-[#EC7CA5] bg-opacity-10 p-6 md:p-8 rounded-xl text-center">
             <h2 className="text-2xl font-bold mb-4 text-gray-800">Get Early Access</h2>
             <p className="text-gray-600 mb-6">
               Be the first to experience MindDump and receive exclusive updates and offers.
@@ -522,6 +615,7 @@ export default function Home() {
 
         {/* App Download Section */}
         <motion.section 
+          id="download-section"
           className="py-16"
           initial="hidden"
           whileInView="visible"
@@ -535,18 +629,18 @@ export default function Home() {
             Download Our App
           </motion.h2>
           <motion.p 
-            className="text-center text-gray-600 mb-10 max-w-2xl mx-auto"
+            className="text-center text-gray-600 mb-10 max-w-2xl mx-auto px-4"
             variants={fadeIn}
           >
             Journal on the go with our beautiful mobile experience
           </motion.p>
           
           <motion.div 
-            className="flex flex-col sm:flex-row gap-6 justify-center"
+            className="flex flex-col sm:flex-row gap-6 justify-center px-4"
             variants={fadeIn}
           >
             {/* App Store Button */}
-            <button className="flex items-center justify-center bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition duration-300">
+            <button className="flex items-center justify-center bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition duration-300 w-full sm:w-auto">
               <svg className="w-8 h-8 mr-2" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M16.53 11.06L12 21l-4.53-9.94h9.06zm-9.36.48L3 16.17l9.17-3.17-4.99-1.46zM20.97 16.17l-4.17-4.63-4.99 1.46 9.17 3.17zM12 2L8.83 9.37h6.34L12 2z"/>
               </svg>
@@ -557,7 +651,7 @@ export default function Home() {
             </button>
             
             {/* Google Play Button */}
-            <button className="flex items-center justify-center bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition duration-300">
+            <button className="flex items-center justify-center bg-black text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition duration-300 w-full sm:w-auto">
               <svg className="w-8 h-8 mr-2" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M3 20.5v-17c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5v17c0 .83-.67 1.5-1.5 1.5S3 21.33 3 20.5zM8.5 12l8.5 6.5V5.5L8.5 12z"/>
               </svg>
@@ -580,14 +674,14 @@ export default function Home() {
               <span className="text-[#EC7CA5] ml-2 font-bold">MindDump</span>
             </div>
             
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 text-center md:text-left">
               <p>&copy; {new Date().getFullYear()} MindDump. All rights reserved.</p>
             </div>
             
             <div className="flex space-x-4 mt-4 md:mt-0">
-              <a href="#" className="text-gray-500 hover:text-[#EC7CA5]">Privacy</a>
-              <a href="#" className="text-gray-500 hover:text-[#EC7CA5]">Terms</a>
-              <a href="#" className="text-gray-500 hover:text-[#EC7CA5]">Contact</a>
+              <a href="#" className="text-gray-500 hover:text-[#EC7CA5] transition-colors">Privacy</a>
+              <a href="#" className="text-gray-500 hover:text-[#EC7CA5] transition-colors">Terms</a>
+              <a href="#" className="text-gray-500 hover:text-[#EC7CA5] transition-colors">Contact</a>
             </div>
           </div>
         </footer>

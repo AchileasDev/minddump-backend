@@ -1,106 +1,160 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-const supabase = createClient(
+// This is the admin client, which can bypass RLS
+const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Get user profile
-router.get('/profile', auth, async (req, res) => {
-  try {
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', req.user.id)
-      .single();
+// POST /api/user/request-password-reset
+router.post('/request-password-reset', async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    // The regular client is fine here as we are not accessing protected data
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-    if (error) throw error;
-    if (!profile) {
-      return res.status(404).json({ message: 'Profile not found' });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${process.env.SITE_URL}/reset-password`,
+    });
+
+    if (error) {
+        return res.status(500).json({ error: error.message });
     }
 
-    res.json(profile);
-  } catch (error) {
-    console.error('Error fetching profile:', error);
-    res.status(500).json({ message: 'Error fetching profile' });
-  }
+    return res.status(200).json({ message: 'Password reset email sent.' });
 });
 
-// Update user profile
-router.put('/profile', auth, async (req, res) => {
-  try {
-    const { username, full_name, avatar_url } = req.body;
 
-    const { data: profile, error } = await supabase
-      .from('profiles')
-      .update({
-        username,
-        full_name,
-        avatar_url,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', req.user.id)
-      .select()
-      .single();
+// All routes below require authentication
+router.use(requireAuth);
 
-    if (error) throw error;
+// POST /api/user/delete-account
+router.post('/delete-account', async (req, res) => {
+    const { id } = req.user;
 
-    res.json(profile);
-  } catch (error) {
-    console.error('Error updating profile:', error);
-    res.status(500).json({ message: 'Error updating profile' });
-  }
-});
+    // First, delete from the 'profiles' table
+    const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .delete()
+        .eq('id', id);
 
-// Get user settings
-router.get('/settings', auth, async (req, res) => {
-  try {
-    const { data: settings, error } = await supabase
-      .from('user_settings')
-      .select('*')
-      .eq('user_id', req.user.id)
-      .single();
-
-    if (error) throw error;
-    if (!settings) {
-      return res.status(404).json({ message: 'Settings not found' });
+    if (profileError) {
+        console.error('Error deleting profile:', profileError);
+        return res.status(500).json({ error: 'Failed to delete user profile.' });
     }
 
-    res.json(settings);
-  } catch (error) {
-    console.error('Error fetching settings:', error);
-    res.status(500).json({ message: 'Error fetching settings' });
-  }
+    // Then, delete the user from Supabase Auth
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
+
+    if (authError) {
+        console.error('Error deleting auth user:', authError);
+        return res.status(500).json({ error: 'Failed to delete user from auth.' });
+    }
+    
+    res.status(200).json({ message: 'Account deleted successfully.' });
 });
 
-// Update user settings
-router.put('/settings', auth, async (req, res) => {
-  try {
-    const { theme, notifications_enabled, email_notifications } = req.body;
+// GET /api/user/export-dumps
+router.get('/export-dumps', async (req, res) => {
+    const { id } = req.user;
 
-    const { data: settings, error } = await supabase
-      .from('user_settings')
-      .update({
-        theme,
-        notifications_enabled,
-        email_notifications,
-        updated_at: new Date().toISOString()
-      })
-      .eq('user_id', req.user.id)
-      .select()
-      .single();
+    const { data: entries, error } = await supabaseAdmin
+        .from('journal_entries')
+        .select('*')
+        .eq('user_id', id)
+        .order('created_at', { ascending: true });
 
-    if (error) throw error;
-
-    res.json(settings);
-  } catch (error) {
-    console.error('Error updating settings:', error);
-    res.status(500).json({ message: 'Error updating settings' });
-  }
+    if (error) {
+        return res.status(500).json({ error: 'Failed to fetch user entries.' });
+    }
+    
+    const filename = `minddump-export-${id}-${new Date().toISOString()}.json`;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(JSON.stringify(entries, null, 2));
 });
 
-module.exports = router; 
+// POST /api/user/toggle-notifications
+router.post('/toggle-notifications', async (req, res) => {
+    const { id } = req.user;
+    const { enabled } = req.body;
+
+    if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'Invalid "enabled" property.' });
+    }
+
+    const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ notifications_enabled: enabled })
+        .eq('id', id);
+
+    if (error) {
+        return res.status(500).json({ error: 'Failed to update notification settings.' });
+    }
+
+    res.status(200).json({ message: 'Notification settings updated.' });
+});
+
+// The following routes are proxies to Supabase Edge Functions
+// This is not ideal, but we will keep it for now to match existing functionality.
+// A better approach would be to replicate the logic of the edge functions here.
+
+// POST /api/user/update-questions
+router.post('/update-questions', async (req, res) => {
+    try {
+        const { entryId, questions } = req.body;
+        // Basic validation
+        if (!entryId || !Array.isArray(questions)) {
+             return res.status(400).json({ error: 'Invalid input.' });
+        }
+        const response = await fetch(
+            `${process.env.SUPABASE_URL}/functions/v1/update-questions`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+                },
+                body: JSON.stringify({ entryId, questions, userId: req.user.id }),
+            }
+        );
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// POST /api/user/toggle-favorite
+router.post('/toggle-favorite', async (req, res) => {
+    try {
+        const { entryId, question } = req.body;
+        if (!entryId || !question) {
+            return res.status(400).json({ error: 'Invalid input.' });
+        }
+        const response = await fetch(
+            `${process.env.SUPABASE_URL}/functions/v1/toggle-favorite`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, 
+                },
+                body: JSON.stringify({ entryId, question, userId: req.user.id }),
+            }
+        );
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+module.exports = router;

@@ -6,6 +6,7 @@ import { useJournalEntries } from '@/hooks/useJournalEntries';
 import JournalEntryCard from '@/components/JournalEntryCard';
 import { FiArrowLeft, FiSearch, FiCalendar, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { format, subMonths, startOfDay, endOfDay } from 'date-fns';
+import Header from '@/components/Header';
 
 interface JournalEntry {
   id: string;
@@ -24,7 +25,7 @@ interface JournalEntry {
   };
 }
 
-export default function History() {
+const History: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<{ start: Date; end: Date } | null>(null);
@@ -189,6 +190,7 @@ export default function History() {
 
   return (
     <>
+      <Header />
       <Head>
         <title>Journal History | MindDump</title>
         <meta name="description" content="View your journal history" />
@@ -350,4 +352,6 @@ export default function History() {
       </div>
     </>
   );
-} 
+};
+
+export default History; 

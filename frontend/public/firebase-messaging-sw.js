@@ -1,19 +1,20 @@
 // Give the service worker access to Firebase Messaging.
 // Note that you can only use Firebase Messaging here. Other Firebase libraries
 // are not available in the service worker.
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+importScripts("https://www.gstatic.com/firebasejs/10.12.1/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.12.1/firebase-messaging-compat.js");
 
 // Initialize the Firebase app in the service worker by passing in
 // your app's Firebase config object.
 // https://firebase.google.com/docs/web/setup#config-object
 firebase.initializeApp({
-  apiKey: 'your-api-key',
-  authDomain: 'your-auth-domain',
-  projectId: 'your-project-id',
-  messagingSenderId: 'your-messaging-sender-id',
-  appId: 'your-app-id',
-  measurementId: 'your-measurement-id'
+  apiKey: "AZasSyDzs_MRtj6Bmx7M4rgDjIDX-b9sX5dDrSA",
+  authDomain: "minddump-v1.firebaseapp.com",
+  projectId: "minddump-v1",
+  storageBucket: "minddump-v1.appspot.com",
+  messagingSenderId: "1042730464745",
+  appId: "1:1042730464745:web:86606dbbbfcdf18ac0778",
+  measurementId: "G-ZH4XEMJQ1G"
 });
 
 // Retrieve an instance of Firebase Messaging so that it can handle background

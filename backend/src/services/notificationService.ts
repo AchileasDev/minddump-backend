@@ -117,4 +117,13 @@ export class NotificationService {
       },
     });
   }
+}
+
+export async function sendNotification(userId: string, message: string) {
+  return NotificationService.sendToUser(userId, {
+    title: 'Notification',
+    body: message,
+    icon: '/icons/notification-icon.png',
+    data: { type: 'custom' }
+  });
 } 

@@ -60,14 +60,24 @@ export const useNotifications = (): UseNotificationsResult => {
           return;
         }
 
-        // Check if we have permission
-        const permission = await Notification.requestPermission();
-        setIsPermissionGranted(permission === 'granted');
+        // Register service worker for FCM
+        let swRegistration: ServiceWorkerRegistration | undefined;
+        try {
+          swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        } catch (err) {
+          console.error('Service worker registration failed:', err);
+          return;
+        }
 
-        if (permission === 'granted' && messaging) {
-          // Get FCM token
+        // Request permission
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        // Get FCM token with service worker
+        if (messaging && swRegistration) {
           const token = await getToken(messaging, {
-            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
+            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+            serviceWorkerRegistration: swRegistration,
           });
 
           // Save token to Supabase

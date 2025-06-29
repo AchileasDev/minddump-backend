@@ -1,25 +1,28 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const dotenv = require('dotenv');
 const path = require('path');
-
-// Load environment variables from .env.local first, then .env
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
-dotenv.config();
 
 // Import routes
 const dumpRoutes = require('./routes/dumpRoutes');
 const userRoutes = require('./routes/userRoutes');
 const stripeRoutes = require('./routes/stripeRoutes');
 const aiRoutes = require('./routes/aiRoutes');
+const weeklyStatsRoutes = require('./routes/weeklyStats');
+const statsRoutes = require('./routes/statsRoutes');
+const notificationsRoutes = require('./routes/notificationsRoutes');
+const { handleStripeWebhook } = require('./controllers/stripeController');
 
 // Import error handler
 const { errorHandler } = require('./middleware/errorHandler');
 
 // Initialize Express app
 const app = express();
+
+// Stripe webhook needs raw body
+app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), handleStripeWebhook);
 
 // Middleware
 app.use(express.json());
@@ -32,6 +35,9 @@ app.use('/api/dumps', dumpRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/weekly-stats', weeklyStatsRoutes);
+app.use('/api/stats', statsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

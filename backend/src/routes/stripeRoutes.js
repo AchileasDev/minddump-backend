@@ -2,14 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Stripe = require('stripe');
 const User = require('../models/userModel');
-const { auth } = require('../middleware/auth');
-const { handleStripeWebhook } = require('../controllers/stripeController');
+const { requireAuth, requirePremium } = require('../middleware/auth');
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Create a subscription checkout session
-router.post('/create-checkout-session', auth, async (req, res) => {
+router.post('/create-checkout-session', requireAuth, async (req, res) => {
   try {
     const user = req.user;
 
@@ -62,7 +61,7 @@ router.post('/create-checkout-session', auth, async (req, res) => {
 });
 
 // Get subscription status
-router.get('/subscription-status', auth, async (req, res) => {
+router.get('/subscription-status', requireAuth, async (req, res) => {
   try {
     const user = req.user;
 
@@ -96,7 +95,7 @@ router.get('/subscription-status', auth, async (req, res) => {
 });
 
 // Cancel subscription
-router.post('/cancel-subscription', auth, async (req, res) => {
+router.post('/cancel-subscription', requireAuth, async (req, res) => {
   try {
     const user = req.user;
 
@@ -129,7 +128,7 @@ router.post('/cancel-subscription', auth, async (req, res) => {
 });
 
 // Resume canceled subscription
-router.post('/resume-subscription', auth, async (req, res) => {
+router.post('/resume-subscription', requireAuth, async (req, res) => {
   try {
     const user = req.user;
 
@@ -161,7 +160,29 @@ router.post('/resume-subscription', auth, async (req, res) => {
   }
 });
 
-// Stripe webhook endpoint
-router.post('/webhook', handleStripeWebhook);
+// Create a Stripe Customer Portal session
+router.post('/create-customer-portal-session', requireAuth, async (req, res) => {
+  try {
+    const user = req.user;
+
+    // The user object from requireAuth contains the profile from Supabase.
+    // We need the stripe_customer_id stored in our database.
+    const stripeCustomerId = user.stripe_customer_id;
+
+    if (!stripeCustomerId) {
+      return res.status(400).json({ message: 'Stripe customer ID not found for this user.' });
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: `${req.headers.origin}/account`,
+    });
+
+    res.status(200).json({ url: portalSession.url });
+  } catch (error) {
+    console.error('Error creating customer portal session:', error);
+    res.status(500).json({ message: 'Error creating customer portal session' });
+  }
+});
 
 module.exports = router; 
