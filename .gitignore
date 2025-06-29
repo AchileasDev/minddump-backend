@@ -51,3 +51,4 @@ logs/
 *.njsproj
 *.sln
 *.sw? 
+supabase/key/firebase-service-account.json
