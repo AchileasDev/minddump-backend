@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import InsightsCard from '@/components/InsightsCard';
 import MoodChart from '@/components/MoodChart';
-import KeywordsCloud from '@/components/KeywordsCloud';
+import KeywordCloud from '@/components/KeywordCloud';
 import { useAuth, User } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { loadStripe } from '@stripe/stripe-js';
@@ -173,7 +173,7 @@ export default function DashboardPage() {
               </section>
             </div>
             <section className="mb-6">
-              <KeywordsCloud />
+              <KeywordCloud />
             </section>
           </main>
         </div>
