@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode, useCa
 import { supabase } from '@/lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { useRouter } from 'next/router';
+import toast from 'react-hot-toast';
 
 export interface User extends SupabaseUser {
   role?: string;
@@ -14,6 +15,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
+  startTrial: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -78,12 +80,43 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await supabase.auth.signOut();
   };
 
+  const startTrial = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      throw new Error('You must be logged in to start a trial.');
+    }
+    
+    const promise = fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/stats/start-trial`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    }).then(async (res) => {
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Failed to start trial');
+        }
+        return res.json();
+    });
+
+    await toast.promise(promise, {
+        loading: 'Starting your trial...',
+        success: (data) => {
+            fetchUserProfile(session.user); // Refetch profile on success
+            return data.message || 'Trial started successfully!';
+        },
+        error: (err) => err.message || 'Could not start trial.',
+    });
+  };
+
   const value = {
     user,
     loading,
     signIn,
     signUp,
     signOut,
+    startTrial,
   };
 
   return (

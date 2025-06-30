@@ -3,12 +3,12 @@ import { useRouter } from 'next/router';
 import InsightsCard from '@/components/InsightsCard';
 import MoodChart from '@/components/MoodChart';
 import KeywordsCloud from '@/components/KeywordsCloud';
-import { useAuth, UserProfile } from '@/hooks/useAuth';
+import { useAuth, User } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { loadStripe } from '@stripe/stripe-js';
 import toast from 'react-hot-toast';
 import Header from '@/components/Header';
-import { requestPermission } from "@/lib/firebase-messaging";
+import { requestPermission } from "../lib/firebase-messaging";
 import axios from "axios";
 
 // Initialize Stripe.js with the publishable key
@@ -40,7 +40,7 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    requestPermission().then((token) => {
+    requestPermission().then((token: string | undefined) => {
       if (token) {
         axios.post("/api/users/save-token", { token }, { withCredentials: true })
           .then(() => {
@@ -137,13 +137,13 @@ export default function DashboardPage() {
 
           {/* Premium Badge and Upgrade Button */}
           <div className="flex justify-center items-center mb-6 space-x-4">
-            {(user as UserProfile)?.role === 'premium' ? (
+            {(user as User)?.role === 'premium' ? (
               <span className="bg-green-100 text-green-800 text-sm font-medium mr-2 px-2.5 py-0.5 rounded-full dark:bg-green-900 dark:text-green-300">
                 Premium Member
               </span>
             ) : (
               <>
-                {(user as UserProfile)?.subscription_status !== 'trialing' && (
+                {(user as User)?.subscription_status !== 'trialing' && (
                   <button
                     onClick={handleStartTrial}
                     disabled={isStartingTrial}
