@@ -1,6 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { useAuthContext } from '@/contexts/AuthContext';
+import { PostgrestError } from '@supabase/supabase-js';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface ReflectionQuestion {
   question: string;
@@ -27,7 +29,7 @@ interface UseJournalEntriesOptions {
 }
 
 export function useJournalEntries(options: UseJournalEntriesOptions = {}) {
-  const { user } = useAuthContext();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const {
     page = 1,

@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/router';
-import { useAuthContext } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Home() {
   const router = useRouter();
-  const { user } = useAuthContext();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);

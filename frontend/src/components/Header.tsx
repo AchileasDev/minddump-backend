@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import { useAuthContext } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/router';
 import toast from 'react-hot-toast';
 
 export default function Header() {
-  const { user, signOut } = useAuthContext();
+  const { user, signOut } = useAuth();
   const router = useRouter();
 
   const handleSignOut = async () => {
