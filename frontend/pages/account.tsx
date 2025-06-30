@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { useAuth, UserProfile } from '@/hooks/useAuth';
+import { useAuth, User } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
@@ -61,7 +61,7 @@ const AccountPage = () => {
     );
   }
 
-  const typedUser = user as UserProfile;
+  const typedUser = user as User;
 
   return (
     <>
