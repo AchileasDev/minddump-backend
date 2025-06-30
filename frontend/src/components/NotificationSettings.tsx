@@ -26,9 +26,9 @@ export const NotificationSettings = () => {
       setLoading(false);
     };
     fetchSetting();
-  }, [user]);
+  }, [user, supabase]);
 
-  const handleToggleNotifications = async () => {
+  const _handleToggleNotifications = async () => {
     if (!isPermissionGranted) {
       await requestPermission();
     }
