@@ -5,7 +5,7 @@ import { FiBell, FiBellOff } from 'react-icons/fi';
 import { useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
 
 export const NotificationSettings = () => {
-  const { isPermissionGranted, isLoading, requestPermission } = useNotifications();
+  const { isPermissionGranted, requestPermission } = useNotifications();
   const user = useUser();
   const supabase = useSupabaseClient();
   const [enabled, setEnabled] = useState<boolean | null>(null);
