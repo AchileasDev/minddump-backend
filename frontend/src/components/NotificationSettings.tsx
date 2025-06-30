@@ -10,7 +10,7 @@ export const NotificationSettings = () => {
   const supabase = useSupabaseClient();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [_, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSetting = async () => {
