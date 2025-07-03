@@ -28,12 +28,6 @@ export const NotificationSettings = () => {
     fetchSetting();
   }, [user, supabase]);
 
-  const _handleToggleNotifications = async () => {
-    if (!isPermissionGranted) {
-      await requestPermission();
-    }
-  };
-
   const handleToggle = async () => {
     if (enabled === null) return;
     setLoading(true);
