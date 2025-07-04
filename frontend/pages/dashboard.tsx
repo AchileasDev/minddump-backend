@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { loadStripe } from '@stripe/stripe-js';
 import toast from 'react-hot-toast';
 import Header from '@/components/Header';
-import { requestPermission } from "../lib/firebase-messaging";
+// import { requestPermission } from "../lib/firebase-messaging"; // Removed for SSR safety
 import axios from "axios";
 
 // Initialize Stripe.js with the publishable key
@@ -40,17 +40,22 @@ export default function DashboardPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    requestPermission().then((token: string | undefined) => {
-      if (token) {
-        axios.post("/api/users/save-token", { token }, { withCredentials: true })
-          .then(() => {
-            console.log("FCM token sent and saved successfully");
-          })
-          .catch((error) => {
-            console.error("Error saving FCM token:", error);
-          });
-      }
-    });
+    if (typeof window !== 'undefined') {
+      (async () => {
+        const { requestPermission } = await import('../lib/firebase-messaging');
+        requestPermission().then((token: string | undefined) => {
+          if (token) {
+            axios.post("/api/users/save-token", { token }, { withCredentials: true })
+              .then(() => {
+                console.log("FCM token sent and saved successfully");
+              })
+              .catch((error) => {
+                console.error("Error saving FCM token:", error);
+              });
+          }
+        });
+      })();
+    }
   }, []);
 
   const handleStartTrial = async () => {
