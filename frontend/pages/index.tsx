@@ -94,7 +94,7 @@ export default function Home() {
 
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl py-8">
         {/* Navigation */}
-        <header className="flex justify-between items-center mb-16">
+        <header className="flex flex-col md:flex-row justify-between items-center mb-16 px-2 md:px-0">
           <div className="flex items-center">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10 text-[#EC7CA5]">
               <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 4.44-1.04z" />
@@ -137,7 +137,7 @@ export default function Home() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="md:hidden absolute top-20 left-4 right-4 bg-white rounded-lg shadow-lg border border-gray-100 z-50"
+            className="md:hidden absolute top-20 left-2 right-2 sm:left-4 sm:right-4 bg-white rounded-lg shadow-lg border border-gray-100 z-50"
           >
             <nav className="py-4">
               <ul className="space-y-2">

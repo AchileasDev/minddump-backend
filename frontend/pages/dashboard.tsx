@@ -4,15 +4,21 @@ import InsightsCard from '@/components/InsightsCard';
 import MoodChart from '@/components/MoodChart';
 import KeywordCloud from '@/components/KeywordCloud';
 import { useAuth, User } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { loadStripe } from '@stripe/stripe-js';
 import toast from 'react-hot-toast';
 import Header from '@/components/Header';
-// import { requestPermission } from "../lib/firebase-messaging"; // Removed for SSR safety
-import axios from "axios";
+import NotificationPrompt from '@/components/NotificationPrompt';
+import { api } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 // Initialize Stripe.js with the publishable key
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
+}
 
 export default function DashboardPage() {
   const { user, loading, startTrial } = useAuth();
@@ -27,36 +33,33 @@ export default function DashboardPage() {
 
     // Show payment status messages
     if (router.query.payment === 'success') {
-      // Here you could show a success toast/notification
-      // For now, we just remove the query params
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'upgrade_to_pro', {
+          method: 'stripe',
+          user_id: user?.id,
+        });
+      }
       router.replace('/dashboard', undefined, { shallow: true });
       toast.success("Welcome back! Your payment was successful.");
     } else if (router.query.payment === 'canceled') {
-      // Here you could show a cancellation toast/notification
-      // For now, we just remove the query params
       router.replace('/dashboard', undefined, { shallow: true });
       toast.error("Your payment was canceled.");
     }
   }, [user, loading, router]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (async () => {
-        const { requestPermission } = await import('../lib/firebase-messaging');
-        requestPermission().then((token: string | undefined) => {
-          if (token) {
-            axios.post("/api/users/save-token", { token }, { withCredentials: true })
-              .then(() => {
-                console.log("FCM token sent and saved successfully");
-              })
-              .catch((error) => {
-                console.error("Error saving FCM token:", error);
-              });
-          }
-        });
-      })();
-    }
+    const fetchToken = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("Session error:", error);
+      } else if (session) {
+        console.log("JWT Token:", session.access_token);
+      }
+    };
+    fetchToken();
   }, []);
+
+  // Removed old Firebase messaging code - now handled by NotificationPrompt component
 
   const handleStartTrial = async () => {
     setIsStartingTrial(true);
@@ -64,13 +67,19 @@ export default function DashboardPage() {
 
     toast.promise(promise, {
       loading: 'Activating your trial...',
-      success: 'Trial activated! You now have access to all premium features.',
+      success: () => {
+        if (typeof window !== 'undefined' && window.gtag) {
+          window.gtag('event', 'start_trial', {
+            method: 'button',
+            user_id: user?.id,
+          });
+        }
+        return 'Trial activated! You now have access to all premium features.';
+      },
       error: (err) => {
         return <b>{err.message || 'Could not start trial.'}</b>;
       },
     });
-    
-    // The user profile will be refetched by the hook, updating the UI.
     setIsStartingTrial(false);
   };
 
@@ -78,39 +87,25 @@ export default function DashboardPage() {
     if (!user) return;
     setIsRedirecting(true);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      toast.error('You must be logged in to upgrade.');
-      setIsRedirecting(false);
-      return;
-    }
+    try {
+      const response = await api.createCheckoutSession();
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Failed to create checkout session');
+      }
 
-    const promise = fetch('/api/stripe/create-checkout-session', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    }).then(res => {
-      if (!res.ok) throw new Error('Failed to create checkout session');
-      return res.json();
-    }).then(async ({ sessionId }) => {
+      const { sessionId } = response.data as { sessionId: string };
       const stripe = await stripePromise;
+      
       if (stripe) {
         await stripe.redirectToCheckout({ sessionId });
       } else {
         throw new Error('Stripe.js not loaded');
       }
-    });
-
-    toast.promise(promise, {
-      loading: 'Redirecting to checkout...',
-      success: 'Successfully redirected!', // This will likely not be seen as the user is redirected
-      error: (err) => {
-        setIsRedirecting(false);
-        return <b>{err.message || 'Could not initiate checkout.'}</b>
-      }
-    });
+    } catch (error) {
+      setIsRedirecting(false);
+      toast.error(error instanceof Error ? error.message : 'Could not initiate checkout.');
+    }
   };
 
   if (loading || (!user && typeof window !== 'undefined')) {
@@ -128,7 +123,7 @@ export default function DashboardPage() {
   return (
     <>
       <Header />
-      <div className="min-h-screen bg-gradient-to-b from-white to-[#F8E4EC] dark:from-gray-900 dark:to-gray-800 py-8 px-2 md:px-0">
+      <div className="min-h-screen bg-gradient-to-b from-white to-[#F8E4EC] dark:from-gray-900 dark:to-gray-800 py-8 px-2">
         <div className="max-w-5xl mx-auto">
           <header className="mb-8 text-center">
             <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800 dark:text-white flex items-center justify-center gap-3">
@@ -138,8 +133,24 @@ export default function DashboardPage() {
               Your AI Dashboard
             </h1>
             <p className="mt-2 text-gray-500 dark:text-gray-300 text-lg">Personalized insights, mood trends & key themes at a glance</p>
+            
+            {/* Create New Entry Button */}
+            <div className="mt-6">
+              <button
+                onClick={() => router.push('/dashboard/new-entry')}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 flex items-center gap-2 mx-auto"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create New Entry
+              </button>
+            </div>
           </header>
 
+          {/* Notification Prompt */}
+          <NotificationPrompt showCloseButton={true} />
+          
           {/* Premium Badge and Upgrade Button */}
           <div className="flex justify-center items-center mb-6 space-x-4">
             {(user as User)?.role === 'premium' ? (

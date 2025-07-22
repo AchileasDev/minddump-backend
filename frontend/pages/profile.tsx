@@ -40,7 +40,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-xl shadow-md border border-gray-100">
+    <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-xl shadow-md border border-gray-100 px-4">
       <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">Το Προφίλ μου</h1>
       <div className="space-y-4">
         <div>

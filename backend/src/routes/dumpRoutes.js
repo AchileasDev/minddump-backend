@@ -1,127 +1,222 @@
 const express = require('express');
 const router = express.Router();
-const { auth } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/auth');
+const { validateRequired, sanitizeInput } = require('../middleware/validation');
 const { createClient } = require('@supabase/supabase-js');
 
 // Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Apply authentication to all routes
+router.use(requireAuth);
+
 // Get all dumps for a user
-router.get('/', auth, async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const { data: dumps, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .select('*')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching dumps:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error fetching journal entries' 
+      });
+    }
 
-    res.json(dumps);
+    res.json({
+      success: true,
+      data: dumps,
+      count: dumps.length
+    });
   } catch (error) {
-    console.error('Error fetching dumps:', error);
-    res.status(500).json({ message: 'Error fetching dumps' });
+    next(error);
   }
 });
 
 // Get a single dump
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
+    const { id } = req.params;
+    
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Entry ID is required' 
+      });
+    }
+
     const { data: dump, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .select('*')
-      .eq('id', req.params.id)
+      .eq('id', id)
       .eq('user_id', req.user.id)
       .single();
 
-    if (error) throw error;
-    if (!dump) {
-      return res.status(404).json({ message: 'Dump not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ 
+          error: 'Not found',
+          message: 'Journal entry not found' 
+        });
+      }
+      console.error('Error fetching dump:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error fetching journal entry' 
+      });
     }
 
-    res.json(dump);
+    res.json({
+      success: true,
+      data: dump
+    });
   } catch (error) {
-    console.error('Error fetching dump:', error);
-    res.status(500).json({ message: 'Error fetching dump' });
+    next(error);
   }
 });
 
 // Create a new dump
-router.post('/', auth, async (req, res) => {
+router.post('/', sanitizeInput, validateRequired(['content']), async (req, res, next) => {
   try {
     const { content, mood, tags } = req.body;
 
+    // Validate content length
+    if (content.length > 10000) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Content is too long (maximum 10,000 characters)' 
+      });
+    }
+
     const { data: dump, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .insert([
         {
           user_id: req.user.id,
           content,
-          mood,
-          tags,
+          mood: mood || 'neutral',
+          tags: tags || [],
           created_at: new Date().toISOString()
         }
       ])
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error creating dump:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error creating journal entry' 
+      });
+    }
 
-    res.status(201).json(dump);
+    res.status(201).json({
+      success: true,
+      data: dump,
+      message: 'Journal entry created successfully'
+    });
   } catch (error) {
-    console.error('Error creating dump:', error);
-    res.status(500).json({ message: 'Error creating dump' });
+    next(error);
   }
 });
 
 // Update a dump
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', sanitizeInput, validateRequired(['content']), async (req, res, next) => {
   try {
+    const { id } = req.params;
     const { content, mood, tags } = req.body;
 
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Entry ID is required' 
+      });
+    }
+
+    // Validate content length
+    if (content.length > 10000) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Content is too long (maximum 10,000 characters)' 
+      });
+    }
+
     const { data: dump, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .update({
         content,
-        mood,
-        tags,
+        mood: mood || 'neutral',
+        tags: tags || [],
         updated_at: new Date().toISOString()
       })
-      .eq('id', req.params.id)
+      .eq('id', id)
       .eq('user_id', req.user.id)
       .select()
       .single();
 
-    if (error) throw error;
-    if (!dump) {
-      return res.status(404).json({ message: 'Dump not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return res.status(404).json({ 
+          error: 'Not found',
+          message: 'Journal entry not found' 
+        });
+      }
+      console.error('Error updating dump:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error updating journal entry' 
+      });
     }
 
-    res.json(dump);
+    res.json({
+      success: true,
+      data: dump,
+      message: 'Journal entry updated successfully'
+    });
   } catch (error) {
-    console.error('Error updating dump:', error);
-    res.status(500).json({ message: 'Error updating dump' });
+    next(error);
   }
 });
 
 // Delete a dump
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', async (req, res, next) => {
   try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Entry ID is required' 
+      });
+    }
+
     const { error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .delete()
-      .eq('id', req.params.id)
+      .eq('id', id)
       .eq('user_id', req.user.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error deleting dump:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error deleting journal entry' 
+      });
+    }
 
-    res.json({ message: 'Dump deleted successfully' });
+    res.json({
+      success: true,
+      message: 'Journal entry deleted successfully'
+    });
   } catch (error) {
-    console.error('Error deleting dump:', error);
-    res.status(500).json({ message: 'Error deleting dump' });
+    next(error);
   }
 });
 

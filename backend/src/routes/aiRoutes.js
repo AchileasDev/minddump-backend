@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth, requirePremium } = require('../middleware/auth');
+const { validateRequired, sanitizeInput } = require('../middleware/validation');
 const { createClient } = require('@supabase/supabase-js');
 const { analyzeText, generateWeeklySummary, generateInsightsFromText } = require('../utils/aiUtils');
 const { generateInsightsPrompt } = require('../utils/promptUtils');
@@ -8,110 +9,153 @@ const { generateInsightsPrompt } = require('../utils/promptUtils');
 // Initialize Supabase client
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // New route for generating insights from multiple entries (premium feature)
-router.post('/insights', [requireAuth, requirePremium], async (req, res) => {
+router.post('/insights', [requireAuth, requirePremium], validateRequired(['entries']), async (req, res, next) => {
   try {
     const { entries } = req.body;
+    
     if (!Array.isArray(entries) || entries.length === 0) {
-      return res.status(400).json({ message: 'An array of entries is required.' });
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'An array of entries is required' 
+      });
     }
 
     // Generate the prompt and get insights
     const prompt = generateInsightsPrompt(entries);
     const insights = await generateInsightsFromText(prompt);
 
-    res.json(insights);
+    res.json({
+      success: true,
+      data: insights
+    });
   } catch (error) {
     console.error('Error in /insights route:', error);
-    res.status(500).json({ message: 'Error generating insights.' });
+    next(error);
   }
 });
 
 // New route for analyzing a single dump (premium feature)
-router.post('/analyze-dump', [requireAuth, requirePremium], async (req, res) => {
+router.post('/analyze-dump', [requireAuth, requirePremium], validateRequired(['content']), sanitizeInput, async (req, res, next) => {
   try {
     const { content } = req.body;
-    if (!content) {
-      return res.status(400).json({ message: 'Content is required for analysis.' });
+
+    if (content.length > 10000) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Content is too long (maximum 10,000 characters)' 
+      });
     }
 
     const analysis = await analyzeText(content);
-    res.json(analysis);
+    res.json({
+      success: true,
+      data: analysis
+    });
   } catch (error) {
     console.error('Error in /analyze-dump route:', error);
-    res.status(500).json({ message: 'Error analyzing dump.' });
+    next(error);
   }
 });
 
 // Analyze text
-router.post('/analyze', requireAuth, async (req, res) => {
+router.post('/analyze', requireAuth, validateRequired(['text']), sanitizeInput, async (req, res, next) => {
   try {
     const { text } = req.body;
-    if (!text) {
-      return res.status(400).json({ message: 'Text is required' });
+
+    if (text.length > 10000) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Text is too long (maximum 10,000 characters)' 
+      });
     }
 
     const analysis = await analyzeText(text);
-    res.json(analysis);
+    res.json({
+      success: true,
+      data: analysis
+    });
   } catch (error) {
     console.error('Error analyzing text:', error);
-    res.status(500).json({ message: 'Error analyzing text' });
+    next(error);
   }
 });
 
 // Generate weekly summary
-router.get('/summary/weekly', requireAuth, async (req, res) => {
+router.get('/summary/weekly', requireAuth, async (req, res, next) => {
   try {
     // Get dumps from the last 7 days
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
     const { data: dumps, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .select('*')
       .eq('user_id', req.user.id)
       .gte('created_at', oneWeekAgo.toISOString())
       .order('created_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching weekly entries:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error fetching weekly entries' 
+      });
+    }
 
     if (dumps.length === 0) {
       return res.json({
-        entriesCount: 0,
-        moodDistribution: [],
-        topEmotions: [],
-        sentimentTrend: [],
-        insights: [],
-        suggestions: []
+        success: true,
+        data: {
+          entriesCount: 0,
+          moodDistribution: [],
+          topEmotions: [],
+          sentimentTrend: [],
+          insights: [],
+          suggestions: []
+        }
       });
     }
 
     const summary = await generateWeeklySummary(dumps);
-    res.json(summary);
+    res.json({
+      success: true,
+      data: summary
+    });
   } catch (error) {
     console.error('Error generating weekly summary:', error);
-    res.status(500).json({ message: 'Error generating weekly summary' });
+    next(error);
   }
 });
 
 // Reprocess dumps with AI
-router.post('/reprocess', requireAuth, async (req, res) => {
+router.post('/reprocess', requireAuth, validateRequired(['dumpIds']), async (req, res, next) => {
   try {
     const { dumpIds } = req.body;
+    
     if (!Array.isArray(dumpIds)) {
-      return res.status(400).json({ message: 'dumpIds must be an array' });
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'dumpIds must be an array' 
+      });
     }
 
     const { data: dumps, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .select('*')
       .eq('user_id', req.user.id)
       .in('id', dumpIds);
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching dumps for reprocessing:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error fetching entries for reprocessing' 
+      });
+    }
 
     const results = await Promise.all(
       dumps.map(async (dump) => {
@@ -119,7 +163,7 @@ router.post('/reprocess', requireAuth, async (req, res) => {
           const analysis = await analyzeText(dump.content);
           
           const { error: updateError } = await supabase
-            .from('dumps')
+            .from('journal_entries')
             .update({
               mood: analysis.mood,
               sentiment: analysis.sentiment,
@@ -131,7 +175,10 @@ router.post('/reprocess', requireAuth, async (req, res) => {
             })
             .eq('id', dump.id);
 
-          if (updateError) throw updateError;
+          if (updateError) {
+            console.error(`Error updating dump ${dump.id}:`, updateError);
+            return { id: dump.id, success: false, error: updateError.message };
+          }
 
           return { id: dump.id, success: true };
         } catch (error) {
@@ -141,15 +188,18 @@ router.post('/reprocess', requireAuth, async (req, res) => {
       })
     );
 
-    res.json({ results });
+    res.json({
+      success: true,
+      data: { results }
+    });
   } catch (error) {
     console.error('Error reprocessing dumps:', error);
-    res.status(500).json({ message: 'Error reprocessing dumps' });
+    next(error);
   }
 });
 
 // Get mood trends
-router.get('/trends/mood', requireAuth, async (req, res) => {
+router.get('/trends/mood', requireAuth, async (req, res, next) => {
   try {
     const { period = 'week' } = req.query;
     let startDate = new Date();
@@ -165,17 +215,26 @@ router.get('/trends/mood', requireAuth, async (req, res) => {
         startDate.setFullYear(startDate.getFullYear() - 1);
         break;
       default:
-        return res.status(400).json({ message: 'Invalid period' });
+        return res.status(400).json({ 
+          error: 'Invalid period',
+          message: 'Period must be week, month, or year' 
+        });
     }
 
     const { data: dumps, error } = await supabase
-      .from('dumps')
+      .from('journal_entries')
       .select('mood, created_at')
       .eq('user_id', req.user.id)
       .gte('created_at', startDate.toISOString())
       .order('created_at', { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error fetching mood trends:', error);
+      return res.status(500).json({ 
+        error: 'Database error',
+        message: 'Error fetching mood trends' 
+      });
+    }
 
     const moodCounts = {};
     dumps.forEach(dump => {
@@ -191,48 +250,61 @@ router.get('/trends/mood', requireAuth, async (req, res) => {
     })).sort((a, b) => b.count - a.count);
 
     res.json({
-      totalEntries: dumps.length,
-      moodDistribution
+      success: true,
+      data: {
+        totalEntries: dumps.length,
+        moodDistribution
+      }
     });
   } catch (error) {
     console.error('Error fetching mood trends:', error);
-    res.status(500).json({ message: 'Error fetching mood trends' });
+    next(error);
   }
 });
 
 // This route proxies the request to the Supabase edge function for analyzing an entry.
 // A better long-term solution would be to call the AI model directly here.
-router.post('/analyze-entry', requireAuth, async (req, res) => {
+router.post('/analyze-entry', requireAuth, validateRequired(['content']), sanitizeInput, async (req, res, next) => {
+  try {
     const { content } = req.body;
-    if (!content) {
-        return res.status(400).json({ error: 'Content is required.' });
+
+    if (content.length > 10000) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Content is too long (maximum 10,000 characters)' 
+      });
     }
 
-    try {
-        const response = await fetch(
-            `${process.env.SUPABASE_URL}/functions/v1/analyze-entry`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-                },
-                body: JSON.stringify({ content }),
-            }
-        );
+    const response = await fetch(
+      `${process.env.SUPABASE_URL}/functions/v1/analyze-entry`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ content }),
+      }
+    );
 
-        if (!response.ok) {
-            const errorBody = await response.text();
-            console.error('Supabase function error:', errorBody);
-            return res.status(response.status).json({ error: 'Failed to analyze entry via Supabase function.' });
-        }
-
-        const data = await response.json();
-        return res.status(200).json(data);
-    } catch (error) {
-        console.error('Error proxying to analyze-entry function:', error);
-        return res.status(500).json({ error: 'Internal server error.' });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Supabase function error:', errorBody);
+      return res.status(response.status).json({ 
+        error: 'Function call failed',
+        message: 'Failed to analyze entry via Supabase function' 
+      });
     }
+
+    const data = await response.json();
+    return res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error('Error proxying to analyze-entry function:', error);
+    next(error);
+  }
 });
 
 module.exports = router; 

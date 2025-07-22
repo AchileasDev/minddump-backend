@@ -3,88 +3,81 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { FiHeart } from 'react-icons/fi';
+import { useAuth } from '@/hooks/useAuth';
+import { api } from '@/lib/api';
+import toast from 'react-hot-toast';
 
-// This would come from an API in a real application
-const MOCK_ENTRIES = [
-  {
-    id: '1',
-    date: '2023-09-15',
-    title: 'Feeling overwhelmed',
-    content: `Too many deadlines this week. Feeling stressed but trying to stay positive.
-
-I need to figure out a better way to manage my time. Maybe I should try that Pomodoro technique everyone talks about? I also think I need to be more assertive about saying no to additional tasks when I'm already at capacity.
-
-Tomorrow I'll try to wake up earlier and tackle the most important task first.`,
-    mood: 'anxious',
-    sentiment: 'negative',
-    insight: 'Consider breaking down large tasks into smaller, manageable steps to reduce feeling overwhelmed.'
-  },
-  {
-    id: '2',
-    date: '2023-09-13',
-    title: 'Great day!',
-    content: `Had a productive meeting and then went for a long walk in the park. Feeling refreshed.
-
-The meeting with the design team went really well. They loved my ideas, and we're moving forward with the project.
-
-After work, I went for a 45-minute walk at the nearby park. The weather was perfect, and I could feel my stress melting away with each step.`,
-    mood: 'happy',
-    sentiment: 'positive',
-    insight: 'Nature walks appear to have a positive impact on your mood and productivity.'
-  },
-  {
-    id: '3',
-    date: '2023-09-10',
-    title: 'Mixed feelings today',
-    content: `Started the day feeling down but had a good conversation with a friend that lifted my spirits.
-
-Woke up feeling quite low for no particular reason. Just one of those days, I guess. Work was somewhat monotonous.
-
-Alex called in the evening, and we had a long chat about life, future plans, and some funny memories. It's amazing how a good conversation can change your entire outlook.`,
-    mood: 'mixed',
-    sentiment: 'neutral',
-    insight: 'Social connections seem to play an important role in improving your mood when feeling low.'
-  }
-];
+interface JournalEntry {
+  id: string;
+  content: string;
+  mood?: string;
+  tags?: string[];
+  reflection_questions?: Array<{
+    question: string;
+    context: string;
+  }>;
+  favorite_questions?: string[];
+  emotions?: string[];
+  sentiment?: string;
+  sentiment_score?: number;
+  insight?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 const EntryPage: React.FC = () => {
   const router = useRouter();
   const { id } = router.query;
-  const [entry, setEntry] = useState<any>(null);
+  const { user, loading } = useAuth();
+  const [entry, setEntry] = useState<JournalEntry | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in
-    const isLoggedIn = localStorage.getItem('isLoggedIn');
-    if (!isLoggedIn) {
+    if (!loading && !user) {
       router.push('/login');
       return;
     }
 
-    // Only fetch when ID is available
-    if (id) {
-      // In a real app, this would be an API call
-      const foundEntry = MOCK_ENTRIES.find(e => e.id === id);
-      if (foundEntry) {
-        setEntry(foundEntry);
+    // Only fetch when ID is available and user is authenticated
+    if (id && user) {
+      fetchEntry();
+    }
+  }, [id, user, loading, router]);
+
+  const fetchEntry = async () => {
+    if (!id || typeof id !== 'string') return;
+    
+    try {
+      const response = await api.getDump(id);
+      
+      if (response.success && response.data) {
+        setEntry(response.data as JournalEntry);
       } else {
-        // Entry not found
+        toast.error('Entry not found');
         router.push('/dashboard');
       }
+    } catch (error) {
+      console.error('Error fetching entry:', error);
+      toast.error('Failed to load entry');
+      router.push('/dashboard');
+    } finally {
       setIsLoading(false);
     }
-  }, [id, router]);
+  };
 
-  const getMoodEmoji = (mood: string) => {
+  const getMoodEmoji = (mood?: string) => {
     switch (mood) {
       case 'happy': return '😊';
       case 'anxious': return '😰';
       case 'mixed': return '😐';
+      case 'sad': return '😢';
+      case 'excited': return '🤩';
+      case 'calm': return '😌';
       default: return '🤔';
     }
   };
 
-  const getSentimentColor = (sentiment: string) => {
+  const getSentimentColor = (sentiment?: string) => {
     switch (sentiment) {
       case 'positive': return 'bg-green-100 text-green-800';
       case 'negative': return 'bg-red-100 text-red-800';
@@ -92,6 +85,14 @@ const EntryPage: React.FC = () => {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  if (loading || (!user && typeof window !== 'undefined')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white to-secondary">
+        <div className="text-primary text-xl">Loading...</div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -112,7 +113,7 @@ const EntryPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-white to-secondary">
       <Head>
-        <title>{entry.title} | MindDump</title>
+        <title>Journal Entry | MindDump</title>
       </Head>
 
       <div className="container mx-auto px-4 py-6">
@@ -139,9 +140,9 @@ const EntryPage: React.FC = () => {
           <div className="bg-white p-8 rounded-2xl shadow-sm mb-8">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <h2 className="text-2xl font-semibold">{entry.title}</h2>
+                <h2 className="text-2xl font-semibold">Journal Entry</h2>
                 <p className="text-gray-500 mt-1">
-                  {new Date(entry.date).toLocaleDateString('en-US', {
+                  {new Date(entry.created_at).toLocaleDateString('en-US', {
                     weekday: 'long',
                     year: 'numeric',
                     month: 'long',
@@ -152,7 +153,7 @@ const EntryPage: React.FC = () => {
               <div className="flex items-center">
                 <div className="text-3xl mr-3">{getMoodEmoji(entry.mood)}</div>
                 <span className={`text-sm px-3 py-1 rounded-full ${getSentimentColor(entry.sentiment)}`}>
-                  {entry.sentiment}
+                  {entry.sentiment || 'neutral'}
                 </span>
               </div>
             </div>
@@ -162,14 +163,45 @@ const EntryPage: React.FC = () => {
                 <p key={idx} className="mb-4">{paragraph}</p>
               ))}
             </div>
+
+            {entry.tags && entry.tags.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Tags:</h4>
+                <div className="flex flex-wrap gap-2">
+                  {entry.tags.map((tag, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="bg-secondary p-6 rounded-2xl shadow-sm mb-8">
-            <h3 className="text-xl font-semibold mb-3">AI Insight</h3>
-            <p className="italic">"{entry.insight}"</p>
-          </div>
+          {entry.insight && (
+            <div className="bg-secondary p-6 rounded-2xl shadow-sm mb-8">
+              <h3 className="text-xl font-semibold mb-3">AI Insight</h3>
+              <p className="italic">"{entry.insight}"</p>
+            </div>
+          )}
 
-          <div className="flex justify-between">
+          {entry.reflection_questions && entry.reflection_questions.length > 0 && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm mb-8">
+              <h3 className="text-xl font-semibold mb-4">Reflection Questions</h3>
+              <div className="space-y-4">
+                {entry.reflection_questions.map((question, idx) => (
+                  <div key={idx} className="border-l-4 border-indigo-500 pl-4">
+                    <p className="font-medium text-gray-800">{question.question}</p>
+                    {question.context && (
+                      <p className="text-sm text-gray-600 mt-1">{question.context}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col md:flex-row md:justify-between gap-4">
             <Link
               href="/dashboard"
               className="px-5 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50"

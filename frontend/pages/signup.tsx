@@ -4,6 +4,12 @@ import Head from 'next/head';
 import { useAuth } from '@/hooks/useAuth';
 import toast from 'react-hot-toast';
 
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
+}
+
 export default function SignupPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -11,6 +17,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const { signUp } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,8 +36,14 @@ export default function SignupPage() {
     toast.promise(promise, {
       loading: 'Creating your account...',
       success: () => {
-        // Don't redirect immediately. Supabase sends a confirmation email.
         setIsLoading(false);
+        setShowSuccess(true);
+        if (typeof window !== 'undefined' && window.gtag) {
+          window.gtag('event', 'sign_up', {
+            method: 'email',
+            email,
+          });
+        }
         return <b>Account created! Please check your email to verify.</b>;
       },
       error: (err) => {
@@ -56,6 +69,20 @@ export default function SignupPage() {
           <p className="text-sm text-gray-500 mt-2">Start your 14-day free trial today</p>
         </div>
 
+        {showSuccess && (
+          <div className="bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl mb-6 text-center">
+            <div className="flex flex-col items-center">
+              <svg className="w-8 h-8 mb-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <b>Account created! Please check your email to verify.</b>
+              <Link href="/login" className="mt-4 inline-block bg-[#EC7CA5] hover:bg-[#d66f94] text-white font-bold py-2 px-6 rounded-lg transition-colors">
+                Go to Login
+              </Link>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl mb-6">
             <div className="flex items-center">
@@ -67,7 +94,7 @@ export default function SignupPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" style={{ display: showSuccess ? 'none' : undefined }}>
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
               Full Name

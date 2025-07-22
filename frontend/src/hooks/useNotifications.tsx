@@ -21,22 +21,22 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ payload, onClose 
   const icon = payload.notification?.icon || '/default-icon.png';
 
   return (
-    <div className="max-w-md w-full bg-white shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5">
-      <div className="flex-1 w-0 p-4">
+    <div className="max-w-md w-full bg-white shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 mx-2 sm:mx-0">
+      <div className="flex-1 w-0 p-3 sm:p-4">
         <div className="flex items-start">
-          <div className="flex-shrink-0 pt-0.5">
-            <img className="h-10 w-10 rounded-full" src={icon} alt={`${title} notification icon`} />
+          <div className="flex-shrink-0 pt-0.5 mr-2 sm:mr-0">
+            <img className="h-8 w-8 sm:h-10 sm:w-10 rounded-full" src={icon} alt={`${title} notification icon`} />
           </div>
-          <div className="ml-3 flex-1">
-            <p className="text-sm font-medium text-gray-900">{title}</p>
-            <p className="mt-1 text-sm text-gray-500">{body}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{title}</p>
+            <p className="mt-1 text-xs sm:text-sm text-gray-500 line-clamp-2">{body}</p>
           </div>
         </div>
       </div>
-      <div className="flex border-l border-gray-200">
+      <div className="flex border-l border-gray-200 flex-shrink-0">
         <button
           onClick={onClose}
-          className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-[#EC7CA5] hover:text-[#EC7CA5] focus:outline-none focus:ring-2 focus:ring-[#EC7CA5]"
+          className="w-full border border-transparent rounded-none rounded-r-lg p-3 sm:p-4 flex items-center justify-center text-xs sm:text-sm font-medium text-[#EC7CA5] hover:text-[#EC7CA5] focus:outline-none focus:ring-2 focus:ring-[#EC7CA5]"
         >
           Close
         </button>

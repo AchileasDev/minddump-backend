@@ -3,10 +3,15 @@ import { supabase } from '@/lib/supabase';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { useRouter } from 'next/router';
 import toast from 'react-hot-toast';
+import { api } from '@/lib/api';
 
 export interface User extends SupabaseUser {
   role?: string;
   subscription_status?: string;
+  trial_ends_at?: string;
+  notifications_enabled?: boolean;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
 }
 
 interface AuthContextType {
@@ -16,6 +21,7 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   startTrial: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,30 +32,39 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const router = useRouter();
 
   const fetchUserProfile = useCallback(async (authUser: SupabaseUser) => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', authUser.id)
-      .single();
-
-    if (error) {
-      console.error('Error fetching profile:', error.message);
+    try {
+      setLoading(true);
+      const response = await api.getUserProfile();
+      
+      if (response.success && response.data) {
+        setUser({ ...authUser, ...response.data });
+      } else {
+        console.error('Error fetching profile:', response.message);
+        setUser(authUser as User); // Fallback to auth user
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
       setUser(authUser as User); // Fallback to auth user
-    } else {
-      setUser({ ...authUser, ...data });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
+
+  const refreshUser = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await fetchUserProfile(session.user);
+    }
+  }, [fetchUserProfile]);
 
   useEffect(() => {
     const getInitialSession = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-            await fetchUserProfile(session.user);
-        } else {
-            setLoading(false);
-        }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await fetchUserProfile(session.user);
+      } else {
+        setLoading(false);
+      }
     };
     getInitialSession();
 
@@ -86,27 +101,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       throw new Error('You must be logged in to start a trial.');
     }
     
-    const promise = fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/stats/start-trial`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-    }).then(async (res) => {
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error || 'Failed to start trial');
-        }
-        return res.json();
+    const promise = api.startTrial().then((response) => {
+      if (response.success) {
+        refreshUser(); // Refetch profile on success
+        return response;
+      } else {
+        throw new Error(response.message || 'Failed to start trial');
+      }
     });
 
     await toast.promise(promise, {
-        loading: 'Starting your trial...',
-        success: (data) => {
-            fetchUserProfile(session.user); // Refetch profile on success
-            return data.message || 'Trial started successfully!';
-        },
-        error: (err) => err.message || 'Could not start trial.',
+      loading: 'Starting your trial...',
+      success: (data) => data.message || 'Trial started successfully!',
+      error: (err) => err.message || 'Could not start trial.',
     });
   };
 
@@ -117,6 +124,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     signUp,
     signOut,
     startTrial,
+    refreshUser,
   };
 
   return (

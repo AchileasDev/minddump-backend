@@ -1,48 +1,61 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/hooks/useAuth';
+import { api } from '@/lib/api';
 import { FiBell, FiBellOff } from 'react-icons/fi';
-import { useUser, useSupabaseClient } from '@supabase/auth-helpers-react';
+import toast from 'react-hot-toast';
 
 export const NotificationSettings = () => {
   const { isPermissionGranted } = useNotifications();
-  const user = useUser();
-  const supabase = useSupabaseClient();
+  const { user } = useAuth();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
-  const [_, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSetting = async () => {
-      if (!user || !user.id) return;
+      if (!user) return;
       setLoading(true);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('notifications_enabled')
-        .eq('id', user.id)
-        .single();
-      if (error) setError('Failed to fetch setting');
-      else setEnabled(data?.notifications_enabled ?? true);
-      setLoading(false);
+      
+      try {
+        const response = await api.getUserProfile();
+        
+        if (response.success && response.data) {
+          const userData = response.data as any;
+          setEnabled(userData.notifications_enabled ?? true);
+        } else {
+          setEnabled(true); // Default to enabled
+        }
+      } catch (error) {
+        console.error('Failed to fetch notification setting:', error);
+        setEnabled(true); // Default to enabled
+      } finally {
+        setLoading(false);
+      }
     };
+    
     fetchSetting();
-  }, [user, supabase]);
+  }, [user]);
 
   const handleToggle = async () => {
     if (enabled === null) return;
     setLoading(true);
-    setError(null);
-    const res = await fetch('/api/toggle-notifications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: !enabled }),
-    });
-    if (res.ok) {
-      setEnabled(!enabled);
-    } else {
-      setError('Failed to update setting');
+    
+    try {
+      const response = await api.toggleNotifications(!enabled);
+      
+      if (response.success) {
+        setEnabled(!enabled);
+        toast.success(`Notifications ${!enabled ? 'enabled' : 'disabled'}`);
+      } else {
+        toast.error(response.message || 'Failed to update setting');
+      }
+    } catch (error) {
+      console.error('Failed to update notification setting:', error);
+      toast.error('Failed to update setting');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

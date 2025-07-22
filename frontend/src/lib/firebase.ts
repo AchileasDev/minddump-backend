@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
+import { getMessaging, getToken, onMessage, isSupported, MessagePayload } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -14,12 +14,15 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
+// Initialize Firebase Cloud Messaging
 let messaging: ReturnType<typeof getMessaging> | null = null;
 
 if (typeof window !== 'undefined') {
   isSupported().then((supported) => {
     if (supported) {
       messaging = getMessaging(app);
+    } else {
+      console.log('Firebase messaging is not supported in this browser');
     }
   });
 }
@@ -64,7 +67,7 @@ export const requestNotificationPermission = async (): Promise<string | null> =>
 };
 
 // Listen for foreground messages
-export const onForegroundMessage = (callback: (payload: any) => void) => {
+export const onForegroundMessage = (callback: (payload: MessagePayload) => void) => {
   if (!messaging) {
     console.log('Firebase messaging not initialized');
     return () => {};
@@ -73,4 +76,7 @@ export const onForegroundMessage = (callback: (payload: any) => void) => {
   return onMessage(messaging, callback);
 };
 
-export { app, messaging, getToken, onMessage }; 
+// Get current messaging instance
+export const getMessagingInstance = () => messaging;
+
+export { app, messaging }; 

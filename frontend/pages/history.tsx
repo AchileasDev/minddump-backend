@@ -5,8 +5,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useJournalEntries } from '@/hooks/useJournalEntries';
 import JournalEntryCard from '@/components/JournalEntryCard';
 import { FiArrowLeft, FiSearch, FiCalendar, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
-import { format, subMonths, startOfDay, endOfDay } from 'date-fns';
+import { subMonths, startOfDay, endOfDay } from 'date-fns';
+import { api } from '@/lib/api';
 import Header from '@/components/Header';
+import toast from 'react-hot-toast';
 
 interface JournalEntry {
   id: string;
@@ -25,25 +27,34 @@ interface JournalEntry {
   };
 }
 
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
+}
+
 const History: React.FC = () => {
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<{ start: Date; end: Date } | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [error] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPremium] = useState(true); // TODO: Replace with actual premium check
   const router = useRouter();
 
-  useJournalEntries({
+  const { user, loading: authLoading } = useAuth();
+  const { 
+    entries, 
+    isLoading, 
+    error, 
+    toggleFavorite, 
+    deleteEntry 
+  } = useJournalEntries({
     page,
     pageSize: 10,
     searchQuery,
     dateFilter: dateFilter || undefined,
   });
-
-  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -75,30 +86,18 @@ const History: React.FC = () => {
 
   const handleToggleFavorite = async (entryId: string, question: string) => {
     try {
-      const response = await fetch('/api/toggle-favorite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ entryId, question }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to toggle favorite');
+      toggleFavorite({ entryId, question });
+      
+      // Fire GA4 event for add_to_favorites
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'add_to_favorites', {
+          entry_id: entryId,
+          question,
+        });
       }
-
-      // Update local state
-      setEntries(entries.map(entry => {
-        if (entry.id === entryId) {
-          const favoriteQuestions = entry.favorite_questions.includes(question)
-            ? entry.favorite_questions.filter(q => q !== question)
-            : [...entry.favorite_questions, question];
-          return { ...entry, favorite_questions: favoriteQuestions };
-        }
-        return entry;
-      }));
     } catch (error) {
       console.error('Error toggling favorite:', error);
+      toast.error('Failed to update favorite');
     }
   };
 
@@ -116,26 +115,20 @@ const History: React.FC = () => {
   const handleCopy = async (entry: JournalEntry) => {
     try {
       await navigator.clipboard.writeText(entry.content);
-      // TODO: Show success toast
+      toast.success('Copied to clipboard!');
     } catch (error) {
       console.error('Error copying:', error);
+      toast.error('Failed to copy to clipboard');
     }
   };
 
   const handleDelete = async (entryId: string) => {
     try {
-      const response = await fetch(`/api/entries/${entryId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete entry');
-      }
-
-      // Update local state
-      setEntries(entries.filter(entry => entry.id !== entryId));
+      deleteEntry(entryId);
+      toast.success('Entry deleted successfully');
     } catch (error) {
       console.error('Error deleting entry:', error);
+      toast.error('Failed to delete entry');
     }
   };
 
@@ -146,29 +139,24 @@ const History: React.FC = () => {
 
     try {
       setIsAnalyzing(true);
-      const response = await fetch('/api/analyze-dump', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content: entry.content }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to analyze entry');
+      
+      // Fire GA4 event for generate_insight
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'generate_insight', {
+          entry_id: entry.id,
+        });
+      }
+      
+      const response = await api.analyzeDump(entry.content);
+      
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to analyze entry');
       }
 
-      const analysis = await response.json();
-
-      // Update local state
-      setEntries(entries.map(e => {
-        if (e.id === entry.id) {
-          return { ...e, analysis };
-        }
-        return e;
-      }));
+      toast.success('Analysis completed!');
     } catch (error) {
       console.error('Error analyzing entry:', error);
+      toast.error('Failed to analyze entry');
     } finally {
       setIsAnalyzing(false);
     }
@@ -178,140 +166,133 @@ const History: React.FC = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#EC7CA5]"></div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600"></div>
+        </div>
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
-
   return (
     <>
-      <Header />
       <Head>
         <title>Journal History | MindDump</title>
-        <meta name="description" content="View your journal history" />
+        <meta name="description" content="View and manage your journal entries" />
       </Head>
-
-      <div className="min-h-screen bg-gradient-to-b from-white to-[#F8E4EC]">
-        <nav className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
+      
+      <Header />
+      
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-4xl mx-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center space-x-4">
                 <button
                   onClick={() => router.push('/dashboard')}
-                  className="mr-4 p-2 text-gray-600 hover:text-[#EC7CA5] transition-colors"
+                  className="p-2 text-gray-600 hover:text-gray-800 transition-colors"
                 >
                   <FiArrowLeft className="w-5 h-5" />
                 </button>
-                <h1 className="text-2xl font-bold text-[#EC7CA5]">Journal History</h1>
+                <h1 className="text-3xl font-bold text-gray-800">Journal History</h1>
               </div>
+              
+              <button
+                onClick={() => router.push('/dashboard/new-entry')}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-6 rounded-lg transition-colors"
+              >
+                {buttonLabel}
+              </button>
             </div>
-          </div>
-        </nav>
 
-        <main className="max-w-4xl mx-auto px-4 py-8">
-          {/* Search and Filter Controls */}
-          <div className="mb-8 space-y-4">
-            <div className="flex items-center space-x-4">
-              <div className="flex-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FiSearch className="h-5 w-5 text-gray-400" />
+            {/* Search and Filters */}
+            <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Search your entries..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
                 </div>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search entries..."
-                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#EC7CA5] focus:border-transparent"
-                />
-              </div>
-              <div className="relative">
-                <button
-                  onClick={() => setShowDatePicker(!showDatePicker)}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#EC7CA5] focus:border-transparent"
-                >
-                  <FiCalendar className="mr-2 h-5 w-5 text-gray-400" />
-                  {dateFilter ? 'Filtered' : 'Filter by date'}
-                </button>
-                {showDatePicker && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
-                    <div className="py-1">
-                      <button
-                        onClick={() => handleDateFilterChange('week')}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        Last week
-                      </button>
-                      <button
-                        onClick={() => handleDateFilterChange('month')}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        Last month
-                      </button>
-                      <button
-                        onClick={() => handleDateFilterChange('all')}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        All time
-                      </button>
+                
+                <div className="relative">
+                  <button
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <FiCalendar className="w-5 h-5" />
+                    <span>Filter by Date</span>
+                  </button>
+                  
+                  {showDatePicker && (
+                    <div className="absolute right-0 mt-2 bg-white border border-gray-300 rounded-lg shadow-lg p-4 z-10">
+                      <div className="space-y-2">
+                        <button
+                          onClick={() => handleDateFilterChange('week')}
+                          className="block w-full text-left px-3 py-2 hover:bg-gray-100 rounded"
+                        >
+                          Last Week
+                        </button>
+                        <button
+                          onClick={() => handleDateFilterChange('month')}
+                          className="block w-full text-left px-3 py-2 hover:bg-gray-100 rounded"
+                        >
+                          Last Month
+                        </button>
+                        <button
+                          onClick={() => handleDateFilterChange('all')}
+                          className="block w-full text-left px-3 py-2 hover:bg-gray-100 rounded"
+                        >
+                          All Time
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-            {dateFilter && (
-              <div className="text-sm text-gray-500">
-                Showing entries from {format(dateFilter.start, 'MMM d, yyyy')} to{' '}
-                {format(dateFilter.end, 'MMM d, yyyy')}
-              </div>
-            )}
-          </div>
 
-          {error ? (
-            <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
+            {/* Entries */}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
               </div>
-            </div>
-          ) : entries?.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="bg-white rounded-lg shadow-sm p-8 max-w-md mx-auto">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No entries found</h3>
+            ) : error ? (
+              <div className="text-center py-12">
+                <p className="text-red-500">{error}</p>
+              </div>
+            ) : entries && entries.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-6xl mb-4">📝</div>
+                <h3 className="text-xl font-semibold text-gray-700 mb-2">No entries found</h3>
                 <p className="text-gray-500 mb-6">
-                  {searchQuery || dateFilter
-                    ? 'Try adjusting your search or filters'
-                    : 'Start your journaling journey by writing your first entry.'}
+                  {searchQuery || dateFilter 
+                    ? 'Try adjusting your search or date filter'
+                    : 'Start your journaling journey by creating your first entry'
+                  }
                 </p>
                 <button
-                  onClick={() => router.push('/dashboard')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-[#EC7CA5] hover:bg-[#EC7CA5]/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EC7CA5]"
+                  onClick={() => router.push('/dashboard/new-entry')}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-6 rounded-lg transition-colors"
                 >
-                  {buttonLabel}
+                  Create New Entry
                 </button>
               </div>
-            </div>
-          ) : (
-            <>
+            ) : (
               <div className="space-y-6">
-                {entries?.map((entry) => (
+                {(entries ?? []).map((entry: any) => (
                   <JournalEntryCard
                     key={entry.id}
                     id={entry.id}
                     content={entry.content}
                     createdAt={new Date(entry.created_at)}
-                    reflectionQuestions={entry.reflection_questions.map((q, idx) => ({ ...q, id: `r-${idx}` }))}
-                    favoriteQuestions={entry.favorite_questions}
+                    reflectionQuestions={entry.reflection_questions || []}
+                    favoriteQuestions={entry.favorite_questions || []}
                     isFavorite={entry.is_favorite}
                     onToggleFavorite={handleToggleFavorite}
                     onShare={() => handleShare(entry)}
@@ -323,32 +304,34 @@ const History: React.FC = () => {
                   />
                 ))}
               </div>
+            )}
 
-              {/* Pagination Controls */}
-              <div className="mt-8 flex justify-center">
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                  <button
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <FiChevronLeft className="h-5 w-5" />
-                  </button>
-                  <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-                    Page {page}
-                  </span>
-                  <button
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!entries || entries.length < 10}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <FiChevronRight className="h-5 w-5" />
-                  </button>
-                </nav>
+            {/* Pagination */}
+            {(entries ?? []).length > 0 && (
+              <div className="flex items-center justify-center mt-8 space-x-4">
+                <button
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={page === 1}
+                  className="flex items-center space-x-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <FiChevronLeft className="w-4 h-4" />
+                  <span>Previous</span>
+                </button>
+                
+                <span className="px-4 py-2 text-gray-600">Page {page}</span>
+                
+                <button
+                  onClick={() => setPage(page + 1)}
+                  disabled={(entries ?? []).length < 10}
+                  className="flex items-center space-x-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span>Next</span>
+                  <FiChevronRight className="w-4 h-4" />
+                </button>
               </div>
-            </>
-          )}
-        </main>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );

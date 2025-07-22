@@ -3,34 +3,127 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const path = require('path');
 
-// Import routes
-const dumpRoutes = require('./routes/dumpRoutes');
-const userRoutes = require('./routes/userRoutes');
-const stripeRoutes = require('./routes/stripeRoutes');
-const aiRoutes = require('./routes/aiRoutes');
-const weeklyStatsRoutes = require('./routes/weeklyStats');
-const statsRoutes = require('./routes/statsRoutes');
-const notificationsRoutes = require('./routes/notificationsRoutes');
-const { handleStripeWebhook } = require('./controllers/stripeController');
+// Only load config if environment variables are available
+let config;
+try {
+  const { getConfig } = require('./config/env');
+  config = getConfig();
+} catch (error) {
+  // Fallback config for build/deployment environments
+  config = {
+    server: { nodeEnv: process.env.NODE_ENV || 'production' },
+    app: { siteUrl: process.env.SITE_URL || 'https://minddump.vercel.app' }
+  };
+}
 
-// Import error handler
-const { errorHandler } = require('./middleware/errorHandler');
+// Conditionally load routes only if environment variables are available
+let dumpRoutes, userRoutes, stripeRoutes, aiRoutes, weeklyStatsRoutes, statsRoutes, notificationsRoutes, handleStripeWebhook, errorHandler;
 
-// Initialize Express app
+try {
+  dumpRoutes = require('./routes/dumpRoutes');
+  userRoutes = require('./routes/userRoutes');
+  stripeRoutes = require('./routes/stripeRoutes');
+  aiRoutes = require('./routes/aiRoutes');
+  weeklyStatsRoutes = require('./routes/weeklyStats');
+  statsRoutes = require('./routes/statsRoutes');
+  notificationsRoutes = require('./routes/notificationsRoutes');
+  const stripeController = require('./controllers/stripeController');
+  handleStripeWebhook = stripeController.handleStripeWebhook;
+  const errorHandlerModule = require('./middleware/errorHandler');
+  errorHandler = errorHandlerModule.errorHandler;
+} catch (error) {
+  console.log('Routes not loaded due to missing environment variables:', error.message);
+  // Create placeholder routes
+  const express = require('express');
+  const placeholderRouter = express.Router();
+  placeholderRouter.get('*', (req, res) => {
+    res.status(503).json({ error: 'Service unavailable', message: 'Environment not configured' });
+  });
+  
+  dumpRoutes = placeholderRouter;
+  userRoutes = placeholderRouter;
+  stripeRoutes = placeholderRouter;
+  aiRoutes = placeholderRouter;
+  weeklyStatsRoutes = placeholderRouter;
+  statsRoutes = placeholderRouter;
+  notificationsRoutes = placeholderRouter;
+  
+  handleStripeWebhook = (req, res) => {
+    res.status(503).json({ error: 'Service unavailable', message: 'Environment not configured' });
+  };
+  
+  errorHandler = (err, req, res, next) => {
+    res.status(500).json({ error: 'Internal server error', message: err.message });
+  };
+}
 const app = express();
 
-// Stripe webhook needs raw body
 app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), handleStripeWebhook);
 
-// Middleware
-app.use(express.json());
-app.use(cors());
-app.use(helmet());
-app.use(morgan('dev'));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Routes
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      config.app.siteUrl,
+      'https://minddump.vercel.app',
+      'https://minddump-frontend.vercel.app',
+      'https://minddump-git-main.vercel.app'
+    ].filter(Boolean);
+    
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
+
+if (config.server.nodeEnv === 'development') {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
+
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'MindDump Backend is running',
+    version: '1.0.0',
+    environment: config.server.nodeEnv,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 app.use('/api/dumps', dumpRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/stripe', stripeRoutes);
@@ -39,34 +132,31 @@ app.use('/api/weekly-stats', weeklyStatsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/notifications', notificationsRoutes);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    message: 'Server is running',
-    environment: process.env.NODE_ENV || 'development'
+app.get('/api-docs', (req, res) => {
+  res.json({
+    message: 'MindDump API Documentation',
+    version: '1.0.0',
+    endpoints: {
+      health: 'GET /health',
+      apiHealth: 'GET /api/health',
+      dumps: 'GET/POST/PUT/DELETE /api/dumps',
+      users: 'GET/PUT /api/users',
+      stripe: 'POST /api/stripe/*',
+      ai: 'POST/GET /api/ai/*',
+      stats: 'GET/POST /api/stats/*',
+      notifications: 'GET /api/notifications/*'
+    }
   });
 });
 
-// Error handling middleware
-app.use(errorHandler);
-
-// Start server
-const PORT = process.env.PORT || 5000;
-const HOST = process.env.HOST || 'localhost';
-
-app.listen(PORT, () => {
-  console.log(`
-🚀 Server is running!
-📡 URL: http://${HOST}:${PORT}
-🌍 Environment: ${process.env.NODE_ENV || 'development'}
-📝 API Documentation: http://${HOST}:${PORT}/api-docs
-  `);
+app.use('*', (req, res) => {
+  res.status(404).json({
+    error: 'Not found',
+    message: `Route ${req.originalUrl} not found`,
+    timestamp: new Date().toISOString()
+  });
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
-  // Close server and exit process
-  process.exit(1);
-}); 
+app.use(errorHandler);
+
+module.exports = app; 

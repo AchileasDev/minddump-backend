@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { useAuth } from '@/hooks/useAuth';
+import { api } from '@/lib/api';
 import { FiArrowLeft } from 'react-icons/fi';
 import { motion } from 'framer-motion';
 import {
@@ -12,10 +13,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  AreaChart,
-  Area,
 } from 'recharts';
-import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 
 interface WeeklyStats {
   totalEntries: number;
@@ -79,14 +78,17 @@ export default function WeeklySummaryPage() {
   useEffect(() => {
     const fetchWeeklyStats = async () => {
       try {
-        const response = await fetch('/api/weekly-stats');
-        if (!response.ok) {
-          throw new Error('Failed to fetch weekly stats');
+        const response = await api.getWeeklyStatsData();
+        
+        if (response.success && response.data) {
+          setWeeklyData(response.data as WeeklyStats);
+        } else {
+          throw new Error(response.message || 'Failed to fetch weekly stats');
         }
-        const data = await response.json();
-        setWeeklyData(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch weekly stats');
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch weekly stats';
+        setError(errorMessage);
+        toast.error(errorMessage);
       } finally {
         setIsLoading(false);
       }
@@ -163,7 +165,7 @@ export default function WeeklySummaryPage() {
         <meta name="description" content="Your weekly journaling insights" />
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-b from-white to-[#F8E4EC]">
+      <div className="min-h-screen bg-gradient-to-b from-white to-[#F8E4EC] px-4">
         <nav className="bg-white shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
@@ -199,143 +201,74 @@ export default function WeeklySummaryPage() {
               >
                 <h3 className="font-medium text-gray-700 mb-2">Journal Entries</h3>
                 <p className="text-3xl font-bold text-[#EC7CA5]">{weeklyData.totalEntries}</p>
-                <p className="text-sm text-gray-500 mt-1">entries this week</p>
               </motion.div>
-              
+
               <motion.div
                 className="bg-gray-50 p-4 rounded-xl"
                 variants={itemVariants}
               >
                 <h3 className="font-medium text-gray-700 mb-2">Dominant Mood</h3>
-                <p className="text-3xl font-bold flex items-center">
-                  {getMoodEmoji(dominantMood)} 
-                  <span className="ml-2 text-[#EC7CA5]">{dominantMood}</span>
-                </p>
-                <p className="text-sm text-gray-500 mt-1">
-                  {dominantMoodPercentage}% of entries
-                </p>
+                <div className="flex items-center">
+                  <span className="text-3xl mr-2">{getMoodEmoji(dominantMood)}</span>
+                  <div>
+                    <p className="text-lg font-semibold capitalize">{dominantMood}</p>
+                    <p className="text-sm text-gray-500">{dominantMoodPercentage}% of entries</p>
+                  </div>
+                </div>
               </motion.div>
-              
+
               <motion.div
                 className="bg-gray-50 p-4 rounded-xl"
                 variants={itemVariants}
               >
                 <h3 className="font-medium text-gray-700 mb-2">Top Emotions</h3>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {topEmotions.map((emotion) => (
-                    <span 
-                      key={emotion} 
-                      className="bg-[#F8E4EC] text-[#EC7CA5] px-3 py-1 rounded-full text-sm"
-                    >
-                      {emotion}
-                    </span>
+                <div className="space-y-1">
+                  {topEmotions.slice(0, 3).map((emotion) => (
+                    <div key={emotion} className="flex items-center justify-between">
+                      <span className="text-sm capitalize">{emotion}</span>
+                      <span className="text-sm font-medium">
+                        {Math.round((weeklyData.emotions[emotion] / totalEmotions) * 100)}%
+                      </span>
+                    </div>
                   ))}
                 </div>
               </motion.div>
             </div>
 
+            {/* Emotion Distribution Chart */}
             <motion.div
               className="mb-8"
               variants={itemVariants}
             >
-              <h3 className="font-medium text-gray-700 mb-4">Emotion Distribution</h3>
+              <h3 className="text-lg font-semibold mb-4">Emotion Distribution</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={emotionData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
+                  <BarChart data={emotionData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis
-                      dataKey="emotion"
-                      type="category"
-                      width={100}
-                      tick={{ fill: '#4B5563' }}
-                    />
-                    <Tooltip
-                      formatter={(value: number) => [`${value}%`, 'Percentage']}
-                      contentStyle={{
-                        backgroundColor: 'white',
-                        border: 'none',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                      }}
-                    />
-                    <Bar
-                      dataKey="percentage"
-                      fill="#EC7CA5"
-                      radius={[0, 4, 4, 0]}
-                    />
+                    <XAxis dataKey="emotion" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#EC7CA5" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </motion.div>
 
-            {weeklyData.dailyEmotions && weeklyData.dailyEmotions.length > 0 && (
-              <motion.div
-                className="mb-8"
-                variants={itemVariants}
-              >
-                <h3 className="font-medium text-gray-700 mb-4">Daily Emotion Trends</h3>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={weeklyData.dailyEmotions.map(day => ({
-                        date: day.date,
-                        ...Object.entries(day.emotions).reduce((acc, [emotion, count]) => ({
-                          ...acc,
-                          [emotion]: count,
-                        }), {}),
-                      }))}
-                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fill: '#4B5563' }}
-                        tickFormatter={(date) => format(new Date(date), 'MMM d')}
-                      />
-                      <YAxis tick={{ fill: '#4B5563' }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: 'white',
-                          border: 'none',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                        }}
-                      />
-                      {topEmotions.map((emotion) => (
-                        <Area
-                          key={emotion}
-                          type="monotone"
-                          dataKey={emotion}
-                          stackId="1"
-                          stroke="#EC7CA5"
-                          fill="#EC7CA5"
-                          fillOpacity={0.3}
-                        />
-                      ))}
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </motion.div>
-            )}
-
-            {weeklyData.trends.length > 0 && (
+            {/* Weekly Trends */}
+            {weeklyData.trends && weeklyData.trends.length > 0 && (
               <motion.div
                 className="bg-gray-50 p-6 rounded-xl"
                 variants={itemVariants}
               >
-                <h3 className="font-medium text-gray-700 mb-4">Emotional Trends</h3>
-                <div className="space-y-2">
+                <h3 className="text-lg font-semibold mb-4">Weekly Trends</h3>
+                <ul className="space-y-2">
                   {weeklyData.trends.map((trend, index) => (
-                    <p key={index} className="text-gray-600">
-                      • {trend}
-                    </p>
+                    <li key={index} className="flex items-start">
+                      <span className="w-2 h-2 bg-[#EC7CA5] rounded-full mt-2 mr-3 flex-shrink-0"></span>
+                      <span className="text-gray-700">{trend}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </motion.div>
             )}
           </motion.div>

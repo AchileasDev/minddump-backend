@@ -33,6 +33,18 @@ export default function Header() {
             <Link href="/history" className="text-gray-600 hover:text-primary dark:text-gray-300 dark:hover:text-white transition">
               History
             </Link>
+            <Link href="/favorites" className="text-gray-600 hover:text-primary dark:text-gray-300 dark:hover:text-white transition">
+              Favorites
+            </Link>
+            <Link href="/weekly" className="text-gray-600 hover:text-primary dark:text-gray-300 dark:hover:text-white transition">
+              Weekly
+            </Link>
+            <Link href="/profile" className="text-gray-600 hover:text-primary dark:text-gray-300 dark:hover:text-white transition">
+              Profile
+            </Link>
+            <Link href="/dashboard/new-entry" className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">
+              + New Entry
+            </Link>
             <Link href="/account" className="text-gray-600 hover:text-primary dark:text-gray-300 dark:hover:text-white transition">
               Account
             </Link>

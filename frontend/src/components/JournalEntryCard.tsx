@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { FiHeart, FiShare2, FiCopy } from 'react-icons/fi';
 import { PremiumFeature } from './PremiumFeature';
+import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 interface ReflectionQuestion {
@@ -24,6 +25,12 @@ interface JournalEntryCardProps {
   onAnalyze: () => void;
   isAnalyzing: boolean;
   isPremium: boolean;
+}
+
+declare global {
+  interface Window {
+    gtag?: (...args: any[]) => void;
+  }
 }
 
 export default function JournalEntryCard({
@@ -93,25 +100,26 @@ export default function JournalEntryCard({
 
     try {
       setTogglingQuestion(question);
-      const response = await fetch('/api/toggle-favorite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          entryId: id,
-          question,
-        }),
-      });
+      
+      const response = await api.toggleFavorite(id, question);
+      
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to toggle favorite');
+      }
 
-      if (!response.ok) {
-        throw new Error('Failed to toggle favorite');
+      // Fire GA4 event for add_to_favorites
+      if (typeof window !== 'undefined' && window.gtag) {
+        window.gtag('event', 'add_to_favorites', {
+          entry_id: id,
+          question,
+        });
       }
 
       // Toggle the question in the local state
       onToggleFavorite(id, question);
     } catch (error) {
       console.error('Error toggling favorite:', error);
+      toast.error('Failed to update favorite');
     } finally {
       setTogglingQuestion(null);
     }
@@ -143,7 +151,7 @@ export default function JournalEntryCard({
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-1 z-10"
+                className="absolute right-0 mt-2 max-w-xs w-full bg-white rounded-lg shadow-lg py-1 z-10"
               >
                 <button
                   onClick={() => handleShare('clipboard')}
@@ -180,7 +188,7 @@ export default function JournalEntryCard({
         <p className="text-gray-800 whitespace-pre-wrap">{content}</p>
         {isFavorite && (
           <span style={{ color: "gold", fontWeight: "bold" }}>
-            ⭐ Αγαπημένο
+            ⭐ Favorite
           </span>
         )}
       </div>
@@ -244,11 +252,12 @@ export default function JournalEntryCard({
                 <span className="text-sm text-gray-600">{q.question}</span>
                 <button
                   onClick={() => handleToggleFavorite(q.question)}
+                  disabled={togglingQuestion === q.question}
                   className={`p-1 rounded-full ${
                     favoriteQuestions.includes(q.question)
                       ? 'text-[#EC7CA5]'
                       : 'text-gray-400 hover:text-[#EC7CA5]'
-                  }`}
+                  } ${togglingQuestion === q.question ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   <FiHeart className="w-4 h-4" />
                 </button>

@@ -1,9 +1,7 @@
-const { OpenAI } = require('openai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Initialize Gemini client
+const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 /**
  * Analyze text to determine mood, sentiment, emotions, and generate an insight
@@ -11,24 +9,21 @@ const openai = new OpenAI({
  * @returns {Promise<Object>} Analysis result with mood, sentiment, sentimentScore, emotions, insight
  */
 const analyzeText = async (text) => {
-  try {
-    // Default result in case API call fails
-    const defaultResult = {
-      mood: 'neutral',
-      sentiment: 'neutral',
-      sentimentScore: 0,
-      emotions: [],
-      insight: 'No insight available.'
-    };
+  const defaultResult = {
+    mood: 'neutral',
+    sentiment: 'neutral',
+    sentimentScore: 0,
+    emotions: [],
+    insight: 'No insight available.'
+  };
 
-    // If no API key is set, return default values
-    if (!process.env.OPENAI_API_KEY) {
-      console.warn('OpenAI API key not found, returning default analysis');
-      return defaultResult;
-    }
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn('Gemini API key not found, returning default analysis');
+    return defaultResult;
+  }
 
-    // Prepare the prompt for analysis
-    const prompt = `
+  // Prepare the prompt for analysis
+  const prompt = `
     Analyze the following journal entry and provide:
     1. The primary mood (choose from: happy, sad, anxious, angry, neutral, excited, confused, mixed)
     2. Overall sentiment (positive, negative, or neutral)
@@ -38,55 +33,36 @@ const analyzeText = async (text) => {
 
     Format your response as a JSON object with the following keys: mood, sentiment, sentimentScore, emotions (array), insight.
 
-    Journal entry: "${text.replace(/"/g, '\\"')}"
-    `;
+    Journal entry: "${text.replace(/"/g, '\"')}"
+  `;
 
-    // Call the OpenAI API
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5,
-      max_tokens: 300,
-    });
-
-    // Parse the result
-    const content = response.choices[0].message.content.trim();
-    let result;
-
+  try {
+    const model = geminiClient.getGenerativeModel({ model: 'gemini-pro' });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const content = response.text().trim();
+    let parsed;
     try {
-      // Try to parse the JSON response
-      result = JSON.parse(content);
-
-      // Validate response format
-      if (!result.mood || !result.sentiment || result.sentimentScore === undefined || !Array.isArray(result.emotions) || !result.insight) {
-        console.warn('AI response missing required fields, using partial result');
-        return { 
-          ...defaultResult, 
-          ...result 
-        };
+      parsed = JSON.parse(content);
+      if (!parsed.mood || !parsed.sentiment || parsed.sentimentScore === undefined || !Array.isArray(parsed.emotions) || !parsed.insight) {
+        console.warn('Gemini response missing required fields, using partial result');
+        return { ...defaultResult, ...parsed };
       }
-
-      return result;
+      return parsed;
     } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError);
+      console.error('Failed to parse Gemini response:', parseError, content);
       return defaultResult;
     }
   } catch (error) {
-    console.error('AI analysis error:', error);
-    return {
-      mood: 'neutral',
-      sentiment: 'neutral',
-      sentimentScore: 0,
-      emotions: [],
-      insight: 'No insight available.'
-    };
+    console.error('Gemini analysis error:', error);
+    return defaultResult;
   }
 };
 
 /**
- * Calls the AI with a specific prompt expecting a structured JSON object in return.
- * @param {string} prompt - The complete prompt to send to the AI.
- * @returns {Promise<Object>} The parsed JSON object from the AI.
+ * Calls Gemini with a specific prompt expecting a structured JSON object in return.
+ * @param {string} prompt - The complete prompt to send to Gemini.
+ * @returns {Promise<Object>} The parsed JSON object from Gemini.
  */
 const generateInsightsFromText = async (prompt) => {
   const defaultResult = {
@@ -99,31 +75,24 @@ const generateInsightsFromText = async (prompt) => {
     ai_suggestions: []
   };
 
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn('OpenAI API key not found, returning default insights.');
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn('Gemini API key not found, returning default insights.');
     return defaultResult;
   }
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125", // Updated model
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
-      max_tokens: 800, // Increased tokens for detailed insights
-    });
-
-    const content = response.choices[0].message.content.trim();
-    // Attempt to parse the string as JSON
+    const model = geminiClient.getGenerativeModel({ model: 'gemini-pro' });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const content = response.text().trim();
     try {
       return JSON.parse(content);
     } catch (parseError) {
-      console.error("Failed to parse AI response as JSON:", content);
-      // Return the raw content in the summary if parsing fails
+      console.error('Failed to parse Gemini response as JSON:', content);
       return { ...defaultResult, summary: content };
     }
-
   } catch (error) {
-    console.error('AI insight generation error:', error);
+    console.error('Gemini insight generation error:', error);
     return defaultResult;
   }
 };
@@ -134,36 +103,32 @@ const generateInsightsFromText = async (prompt) => {
  * @returns {Promise<Object>} Summary object with insights and suggestions
  */
 const generateWeeklySummary = async (entries) => {
-  try {
-    // Default result in case API call fails
-    const defaultResult = {
-      insights: [
-        'You expressed gratitude in several entries this week, which is linked to improved well-being.',
-        'Your writing shows a balance of both positive and challenging emotions.',
-        'You've mentioned important relationships several times, indicating they're significant to you right now.'
-      ],
-      suggestions: [
-        'Consider journaling at a consistent time each day to build a helpful routine.',
-        'Try incorporating a few minutes of mindfulness before writing to enhance emotional awareness.',
-        'Your entries are more detailed when you write for at least 5 minutes.'
-      ]
-    };
+  const defaultResult = {
+    insights: [
+      'You expressed gratitude in several entries this week, which is linked to improved well-being.',
+      'Your writing shows a balance of both positive and challenging emotions.',
+      'You have mentioned important relationships several times, indicating they are significant to you right now.'
+    ],
+    suggestions: [
+      'Consider journaling at a consistent time each day to build a helpful routine.',
+      'Try incorporating a few minutes of mindfulness before writing to enhance emotional awareness.',
+      'Your entries are more detailed when you write for at least 5 minutes.'
+    ]
+  };
 
-    // If no API key is set or no entries, return default values
-    if (!process.env.OPENAI_API_KEY || entries.length === 0) {
-      return defaultResult;
-    }
+  if (!process.env.GEMINI_API_KEY || entries.length === 0) {
+    return defaultResult;
+  }
 
-    // Prepare a condensed version of the entries for the prompt
-    const entrySummaries = entries.map(entry => ({
-      date: new Date(entry.createdAt).toISOString().split('T')[0],
-      content: entry.content.substring(0, 300) + (entry.content.length > 300 ? '...' : ''),
-      mood: entry.mood,
-      sentiment: entry.sentiment
-    }));
+  // Prepare a condensed version of the entries for the prompt
+  const entrySummaries = entries.map(entry => ({
+    date: new Date(entry.createdAt).toISOString().split('T')[0],
+    content: entry.content.substring(0, 300) + (entry.content.length > 300 ? '...' : ''),
+    mood: entry.mood,
+    sentiment: entry.sentiment
+  }));
 
-    // Prepare the prompt for analysis
-    const prompt = `
+  const prompt = `
     Analyze these journal entries from the past week and provide:
     1. Three meaningful insights about patterns, emotions, or behaviors
     2. Three helpful suggestions for the user based on their journaling
@@ -171,55 +136,68 @@ const generateWeeklySummary = async (entries) => {
     Format your response as a JSON object with these keys: insights (array of 3 strings), suggestions (array of 3 strings).
 
     Journal entries: ${JSON.stringify(entrySummaries)}
-    `;
+  `;
 
-    // Call the OpenAI API
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 500,
-    });
-
-    // Parse the result
-    const content = response.choices[0].message.content.trim();
-    
+  try {
+    const model = geminiClient.getGenerativeModel({ model: 'gemini-pro' });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const content = response.text().trim();
     try {
-      // Try to parse the JSON response
-      const result = JSON.parse(content);
-
-      // Validate response format
-      if (!Array.isArray(result.insights) || !Array.isArray(result.suggestions)) {
+      const parsed = JSON.parse(content);
+      if (!Array.isArray(parsed.insights) || !Array.isArray(parsed.suggestions)) {
         return defaultResult;
       }
-
       return {
-        insights: result.insights.slice(0, 3),
-        suggestions: result.suggestions.slice(0, 3)
+        insights: parsed.insights.slice(0, 3),
+        suggestions: parsed.suggestions.slice(0, 3)
       };
     } catch (parseError) {
-      console.error('Failed to parse AI summary response:', parseError);
+      console.error('Failed to parse Gemini summary response:', parseError, content);
       return defaultResult;
     }
   } catch (error) {
-    console.error('AI summary generation error:', error);
-    return {
-      insights: [
-        'You expressed a range of emotions this week.',
-        'Your writing shows reflection on your daily experiences.',
-        'Consider how your journaling helps you process emotions.'
-      ],
-      suggestions: [
-        'Try writing at different times of day to see when you feel most reflective.',
-        'Consider adding a gratitude section to your entries.',
-        'Use your journal to set intentions for the following day.'
-      ]
-    };
+    console.error('Gemini summary generation error:', error);
+    return defaultResult;
+  }
+};
+
+/**
+ * Call Gemini AI with a prompt and return the response
+ * @param {string} prompt - The prompt to send to Gemini
+ * @returns {Promise<Object>} The parsed JSON response from Gemini
+ */
+const callGemini = async (prompt) => {
+  const defaultResult = {
+    keywords: [],
+    themes: []
+  };
+
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn('Gemini API key not found, returning default result');
+    return defaultResult;
+  }
+
+  try {
+    const model = geminiClient.getGenerativeModel({ model: 'gemini-pro' });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const content = response.text().trim();
+    try {
+      return JSON.parse(content);
+    } catch (parseError) {
+      console.error('Failed to parse Gemini response as JSON:', content);
+      return defaultResult;
+    }
+  } catch (error) {
+    console.error('Gemini API error:', error);
+    return defaultResult;
   }
 };
 
 module.exports = {
   analyzeText,
   generateInsightsFromText,
-  generateWeeklySummary
+  generateWeeklySummary,
+  callGemini
 }; 

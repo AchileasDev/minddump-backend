@@ -1,160 +1,166 @@
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { validateRequired, sanitizeInput, validateEmail } = require('../middleware/validation');
 const { createClient } = require('@supabase/supabase-js');
+const {
+  getProfile,
+  updateProfile,
+  deleteAccount,
+  exportData,
+  toggleNotifications,
+  getAllUsers,
+  updateUserRole
+} = require('../controllers/userController');
 
-// This is the admin client, which can bypass RLS
-const supabaseAdmin = createClient(
+// Initialize Supabase client
+const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// POST /api/user/request-password-reset
-router.post('/request-password-reset', async (req, res) => {
+// POST /api/users/request-password-reset
+router.post('/request-password-reset', validateRequired(['email']), sanitizeInput, async (req, res, next) => {
+  try {
     const { email } = req.body;
-    if (!email) {
-        return res.status(400).json({ error: 'Email is required' });
-    }
     
-    // The regular client is fine here as we are not accessing protected data
-    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    if (!validateEmail(email)) {
+      return res.status(400).json({ 
+        error: 'Invalid email',
+        message: 'Please provide a valid email address' 
+      });
+    }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${process.env.SITE_URL}/reset-password`,
+    // Use the regular client for password reset
+    const supabaseClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: `${process.env.SITE_URL}/reset-password`,
     });
 
     if (error) {
-        return res.status(500).json({ error: error.message });
+      console.error('Password reset error:', error);
+      return res.status(500).json({ 
+        error: 'Password reset failed',
+        message: error.message 
+      });
     }
 
-    return res.status(200).json({ message: 'Password reset email sent.' });
+    return res.status(200).json({ 
+      success: true,
+      message: 'Password reset email sent successfully' 
+    });
+  } catch (error) {
+    next(error);
+  }
 });
-
 
 // All routes below require authentication
 router.use(requireAuth);
 
-// POST /api/user/delete-account
-router.post('/delete-account', async (req, res) => {
-    const { id } = req.user;
+// GET /api/users/profile
+router.get('/profile', getProfile);
 
-    // First, delete from the 'profiles' table
-    const { error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .delete()
-        .eq('id', id);
+// PUT /api/users/profile
+router.put('/profile', sanitizeInput, validateRequired(['name']), updateProfile);
 
-    if (profileError) {
-        console.error('Error deleting profile:', profileError);
-        return res.status(500).json({ error: 'Failed to delete user profile.' });
-    }
+// POST /api/users/delete-account
+router.post('/delete-account', deleteAccount);
 
-    // Then, delete the user from Supabase Auth
-    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
+// GET /api/users/export-data
+router.get('/export-data', exportData);
 
-    if (authError) {
-        console.error('Error deleting auth user:', authError);
-        return res.status(500).json({ error: 'Failed to delete user from auth.' });
-    }
+// POST /api/users/toggle-notifications
+router.post('/toggle-notifications', validateRequired(['enabled']), toggleNotifications);
+
+// POST /api/users/update-questions
+router.post('/update-questions', validateRequired(['entryId', 'questions']), async (req, res, next) => {
+  try {
+    const { entryId, questions } = req.body;
     
-    res.status(200).json({ message: 'Account deleted successfully.' });
+    if (!Array.isArray(questions)) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        message: 'Questions must be an array' 
+      });
+    }
+
+    const response = await fetch(
+      `${process.env.SUPABASE_URL}/functions/v1/update-questions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+        body: JSON.stringify({ entryId, questions, userId: req.user.id }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Supabase function error:', errorText);
+      return res.status(response.status).json({ 
+        error: 'Function call failed',
+        message: 'Failed to update questions' 
+      });
+    }
+
+    const data = await response.json();
+    res.status(200).json({
+      success: true,
+      data,
+      message: 'Questions updated successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-// GET /api/user/export-dumps
-router.get('/export-dumps', async (req, res) => {
-    const { id } = req.user;
-
-    const { data: entries, error } = await supabaseAdmin
-        .from('journal_entries')
-        .select('*')
-        .eq('user_id', id)
-        .order('created_at', { ascending: true });
-
-    if (error) {
-        return res.status(500).json({ error: 'Failed to fetch user entries.' });
-    }
+// POST /api/users/toggle-favorite
+router.post('/toggle-favorite', validateRequired(['entryId', 'question']), async (req, res, next) => {
+  try {
+    const { entryId, question } = req.body;
     
-    const filename = `minddump-export-${id}-${new Date().toISOString()}.json`;
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.status(200).send(JSON.stringify(entries, null, 2));
-});
+    const response = await fetch(
+      `${process.env.SUPABASE_URL}/functions/v1/toggle-favorite`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, 
+        },
+        body: JSON.stringify({ entryId, question, userId: req.user.id }),
+      }
+    );
 
-// POST /api/user/toggle-notifications
-router.post('/toggle-notifications', async (req, res) => {
-    const { id } = req.user;
-    const { enabled } = req.body;
-
-    if (typeof enabled !== 'boolean') {
-        return res.status(400).json({ error: 'Invalid "enabled" property.' });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Supabase function error:', errorText);
+      return res.status(response.status).json({ 
+        error: 'Function call failed',
+        message: 'Failed to toggle favorite' 
+      });
     }
 
-    const { error } = await supabaseAdmin
-        .from('profiles')
-        .update({ notifications_enabled: enabled })
-        .eq('id', id);
-
-    if (error) {
-        return res.status(500).json({ error: 'Failed to update notification settings.' });
-    }
-
-    res.status(200).json({ message: 'Notification settings updated.' });
+    const data = await response.json();
+    res.status(200).json({
+      success: true,
+      data,
+      message: 'Favorite toggled successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-// The following routes are proxies to Supabase Edge Functions
-// This is not ideal, but we will keep it for now to match existing functionality.
-// A better approach would be to replicate the logic of the edge functions here.
+// Admin routes
+router.use(requireAdmin);
 
-// POST /api/user/update-questions
-router.post('/update-questions', async (req, res) => {
-    try {
-        const { entryId, questions } = req.body;
-        // Basic validation
-        if (!entryId || !Array.isArray(questions)) {
-             return res.status(400).json({ error: 'Invalid input.' });
-        }
-        const response = await fetch(
-            `${process.env.SUPABASE_URL}/functions/v1/update-questions`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-                },
-                body: JSON.stringify({ entryId, questions, userId: req.user.id }),
-            }
-        );
-        const data = await response.json();
-        res.status(response.status).json(data);
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+// GET /api/users/all
+router.get('/all', getAllUsers);
 
-// POST /api/user/toggle-favorite
-router.post('/toggle-favorite', async (req, res) => {
-    try {
-        const { entryId, question } = req.body;
-        if (!entryId || !question) {
-            return res.status(400).json({ error: 'Invalid input.' });
-        }
-        const response = await fetch(
-            `${process.env.SUPABASE_URL}/functions/v1/toggle-favorite`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`, 
-                },
-                body: JSON.stringify({ entryId, question, userId: req.user.id }),
-            }
-        );
-        const data = await response.json();
-        res.status(response.status).json(data);
-    } catch (error) {
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-
+// PUT /api/users/:userId/role
+router.put('/:userId/role', validateRequired(['role']), updateUserRole);
 
 module.exports = router;

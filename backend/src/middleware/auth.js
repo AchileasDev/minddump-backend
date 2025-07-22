@@ -11,7 +11,10 @@ const requireAuth = async (req, res, next) => {
   // Get token from Authorization header
   const token = req.header('Authorization')?.replace('Bearer ', '');
   if (!token) {
-    return res.status(401).json({ message: 'No authentication token, access denied.' });
+    return res.status(401).json({ 
+      error: 'Authentication required',
+      message: 'No authentication token provided' 
+    });
   }
 
   try {
@@ -19,7 +22,10 @@ const requireAuth = async (req, res, next) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      return res.status(401).json({ message: 'Invalid or expired token.' });
+      return res.status(401).json({ 
+        error: 'Invalid token',
+        message: 'Invalid or expired authentication token' 
+      });
     }
 
     // Fetch the user's profile from the 'profiles' table to get the role and other details
@@ -30,26 +36,58 @@ const requireAuth = async (req, res, next) => {
       .single();
 
     if (profileError || !profile) {
-      return res.status(401).json({ message: 'User profile not found.' });
+      return res.status(401).json({ 
+        error: 'Profile not found',
+        message: 'User profile not found' 
+      });
     }
 
     // Attach the full user profile (including role) to the request object
     req.user = profile;
     next();
   } catch (error) {
-    res.status(401).json({ message: 'Authentication failed due to an unexpected error.' });
+    console.error('Authentication error:', error);
+    res.status(500).json({ 
+      error: 'Authentication failed',
+      message: 'Authentication failed due to an unexpected error' 
+    });
   }
 };
 
 // Middleware: requirePremium
 const requirePremium = (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({ message: 'Authentication required to check premium status.' });
+    return res.status(401).json({ 
+      error: 'Authentication required',
+      message: 'Authentication required to check premium status' 
+    });
   }
+  
   if (req.user.role !== 'premium') {
-    return res.status(403).json({ message: 'Premium access required.' });
+    return res.status(403).json({ 
+      error: 'Premium required',
+      message: 'Premium access required for this feature' 
+    });
   }
   next();
 };
 
-module.exports = { requireAuth, requirePremium }; 
+// Middleware: requireAdmin
+const requireAdmin = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ 
+      error: 'Authentication required',
+      message: 'Authentication required to check admin status' 
+    });
+  }
+  
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ 
+      error: 'Admin required',
+      message: 'Admin access required for this feature' 
+    });
+  }
+  next();
+};
+
+module.exports = { requireAuth, requirePremium, requireAdmin }; 

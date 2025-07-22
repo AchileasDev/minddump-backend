@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAuth, User } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import Head from 'next/head';
 import Header from '@/components/Header';
+import NotificationPrompt from '@/components/NotificationPrompt';
+import TestNotification from '@/components/TestNotification';
 
 const AccountPage = () => {
   const { user, loading, signOut } = useAuth();
@@ -22,23 +24,13 @@ const AccountPage = () => {
     toast.loading('Redirecting to billing portal...');
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('User not logged in');
-
-      const response = await fetch('/api/stripe/create-customer-portal-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const { message } = await response.json();
-        throw new Error(message || 'Failed to create billing session.');
+      const response = await api.createCustomerPortalSession();
+      
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Failed to create billing session.');
       }
 
-      const { url } = await response.json();
+      const { url } = response.data as { url: string };
       window.location.href = url;
     } catch (error: any) {
       toast.dismiss();
@@ -69,11 +61,17 @@ const AccountPage = () => {
       <Head>
         <title>My Account - MindDump</title>
       </Head>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 py-12">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 py-12 px-2">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <header className="mb-8">
             <h1 className="text-3xl font-bold text-center">My Account</h1>
           </header>
+
+          {/* Notification Settings */}
+          <NotificationPrompt showCloseButton={true} />
+          
+          {/* Test Notification */}
+          <TestNotification />
 
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
             <div className="p-6 space-y-4">
