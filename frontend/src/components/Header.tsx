@@ -8,15 +8,30 @@ export default function Header() {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    const promise = signOut();
-    toast.promise(promise, {
-      loading: 'Signing out...',
-      success: () => {
-        router.push('/login');
-        return <b>Signed out successfully!</b>;
-      },
-      error: (err) => <b>{err.message || 'Could not sign out.'}</b>,
-    });
+    try {
+      const promise = signOut();
+      toast.promise(promise, {
+        loading: 'Signing out...',
+        success: () => {
+          try {
+            if (typeof window !== 'undefined' && router) {
+              router.push('/login');
+            }
+          } catch (navError) {
+            console.error('Navigation error:', navError);
+            // Fallback: reload to login
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login';
+            }
+          }
+          return <b>Signed out successfully!</b>;
+        },
+        error: (err) => <b>{err?.message || 'Could not sign out.'}</b>,
+      });
+    } catch (error) {
+      console.error('Sign out error:', error);
+      toast.error('Failed to sign out. Please try again.');
+    }
   };
 
   return (

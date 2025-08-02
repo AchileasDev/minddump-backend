@@ -51,70 +51,130 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const refreshUser = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      await fetchUserProfile(session.user);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await fetchUserProfile(session.user);
+      }
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      setLoading(false);
     }
   }, [fetchUserProfile]);
 
   useEffect(() => {
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await fetchUserProfile(session.user);
-      } else {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await fetchUserProfile(session.user);
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error getting initial session:', error);
         setLoading(false);
       }
     };
     getInitialSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const currentUser = session?.user;
-      if (event === 'SIGNED_IN' && currentUser) {
-        await fetchUserProfile(currentUser);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        router.push('/login');
+      try {
+        const currentUser = session?.user;
+        if (event === 'SIGNED_IN' && currentUser) {
+          await fetchUserProfile(currentUser);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setLoading(false);
+          // Only redirect if we're not already on login page and window exists
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            router.push('/login');
+          }
+        }
+      } catch (error) {
+        console.error('Auth state change error:', error);
+        // Don't throw here to prevent breaking the auth flow
+        setLoading(false);
       }
     });
 
     return () => {
-      authListener?.subscription.unsubscribe();
+      if (authListener?.subscription) {
+        authListener.subscription.unsubscribe();
+      }
     };
   }, [fetchUserProfile, router]);
 
-  const signIn = (email: string, password: string) => {
-    return supabase.auth.signInWithPassword({ email, password });
+  const signIn = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data?.user) {
+        // Ensure user profile is fetched after successful sign in
+        await fetchUserProfile(data.user);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Sign in error:', error);
+      setLoading(false);
+      throw error;
+    }
   };
   
-  const signUp = (email: string, password: string) => {
-    return supabase.auth.signUp({ email, password });
+  const signUp = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      
+      if (error) {
+        throw error;
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Sign up error:', error);
+      throw error;
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Sign out error:', error);
+      throw error;
+    }
   };
 
   const startTrial = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      throw new Error('You must be logged in to start a trial.');
-    }
-    
-    const promise = api.startTrial().then((response) => {
-      if (response.success) {
-        refreshUser(); // Refetch profile on success
-        return response;
-      } else {
-        throw new Error(response.message || 'Failed to start trial');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        throw new Error('You must be logged in to start a trial.');
       }
-    });
+      
+      const promise = api.startTrial().then((response) => {
+        if (response.success) {
+          refreshUser(); // Refetch profile on success
+          return response;
+        } else {
+          throw new Error(response.message || 'Failed to start trial');
+        }
+      });
 
-    await toast.promise(promise, {
-      loading: 'Starting your trial...',
-      success: (data) => data.message || 'Trial started successfully!',
-      error: (err) => err.message || 'Could not start trial.',
-    });
+      await toast.promise(promise, {
+        loading: 'Starting your trial...',
+        success: (data) => data.message || 'Trial started successfully!',
+        error: (err) => err.message || 'Could not start trial.',
+      });
+    } catch (error) {
+      console.error('Start trial error:', error);
+      throw error;
+    }
   };
 
   const value = {
@@ -129,7 +189,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

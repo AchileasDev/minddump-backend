@@ -18,20 +18,44 @@ export default function LoginPage() {
     setIsLoading(true);
     setError('');
 
-    const promise = signIn(email, password);
+    try {
+      const promise = signIn(email, password);
 
-    toast.promise(promise, {
-      loading: 'Signing in...',
-      success: () => {
-        router.push('/dashboard');
-        return <b>Welcome back!</b>;
-      },
-      error: (err) => {
-        setIsLoading(false);
-        setError(err.message || 'Login failed. Please check your credentials.');
-        return <b>{err.message || 'Login failed. Please check your credentials.'}</b>;
-      },
-    });
+      toast.promise(promise, {
+        loading: 'Signing in...',
+        success: (result) => {
+          // Add proper guard before router.push
+          if (result && !result.error) {
+            // Use setTimeout to ensure state is updated before navigation
+            setTimeout(() => {
+              try {
+                if (typeof window !== 'undefined' && router) {
+                  router.push('/dashboard');
+                }
+              } catch (navError) {
+                console.error('Navigation error:', navError);
+                // Fallback: reload the page
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/dashboard';
+                }
+              }
+            }, 100);
+          }
+          return <b>Welcome back!</b>;
+        },
+        error: (err) => {
+          setIsLoading(false);
+          const errorMessage = err?.message || 'Login failed. Please check your credentials.';
+          setError(errorMessage);
+          return <b>{errorMessage}</b>;
+        },
+      });
+    } catch (error) {
+      setIsLoading(false);
+      const errorMessage = error instanceof Error ? error.message : 'Login failed. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    }
   };
 
   return (
