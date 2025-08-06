@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
+import { getMessaging, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -24,53 +24,4 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Request notification permission and get FCM token
-export const requestNotificationPermission = async (): Promise<string | null> => {
-  if (!messaging) {
-    console.log('Firebase messaging not initialized');
-    return null;
-  }
-
-  try {
-    console.log('Requesting notification permission...');
-    const permission = await Notification.requestPermission();
-
-    if (permission === 'granted') {
-      console.log('Notification permission granted');
-      
-      const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
-      if (!vapidKey) {
-        console.error('VAPID key not found in environment variables');
-        return null;
-      }
-
-      const token = await getToken(messaging, { vapidKey });
-      
-      if (token) {
-        console.log('FCM Token obtained:', token);
-        return token;
-      } else {
-        console.log('No registration token available');
-        return null;
-      }
-    } else {
-      console.log('Notification permission denied');
-      return null;
-    }
-  } catch (error) {
-    console.error('Error requesting notification permission:', error);
-    return null;
-  }
-};
-
-// Listen for foreground messages
-export const onForegroundMessage = (callback: (payload: any) => void) => {
-  if (!messaging) {
-    console.log('Firebase messaging not initialized');
-    return () => {};
-  }
-
-  return onMessage(messaging, callback);
-};
-
-export { app, messaging, getToken, onMessage }; 
+export { app, messaging }; 

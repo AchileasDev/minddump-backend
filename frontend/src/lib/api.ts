@@ -24,24 +24,19 @@ export class ApiError extends Error {
   }
 }
 
-// Get authentication token
-const getAuthToken = async (): Promise<string | null> => {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || null;
-};
+// NOTE: All API calls now require the access token to be passed in from useAuth()
 
 // Base API client
 class ApiClient {
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    accessToken?: string
   ): Promise<ApiResponse<T>> {
-    const token = await getAuthToken();
-    
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
+        ...(accessToken && { Authorization: `Bearer ${accessToken}` }),
         ...options.headers,
       },
       ...options,
@@ -64,7 +59,6 @@ class ApiClient {
       if (error instanceof ApiError) {
         throw error;
       }
-      
       // Network or parsing error
       throw new ApiError(
         0,
@@ -75,29 +69,29 @@ class ApiClient {
   }
 
   // GET request
-  async get<T>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'GET' });
+  async get<T>(endpoint: string, accessToken?: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET' }, accessToken);
   }
 
   // POST request
-  async post<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
+  async post<T>(endpoint: string, body?: any, accessToken?: string): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }, accessToken);
   }
 
   // PUT request
-  async put<T>(endpoint: string, body?: any): Promise<ApiResponse<T>> {
+  async put<T>(endpoint: string, body?: any, accessToken?: string): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'PUT',
       body: body ? JSON.stringify(body) : undefined,
-    });
+    }, accessToken);
   }
 
   // DELETE request
-  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(endpoint: string, accessToken?: string): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE' }, accessToken);
   }
 }
 
@@ -153,65 +147,210 @@ export const API_ENDPOINTS = {
   weeklyStats: '/api/weekly-stats/weekly-stats',
 } as const;
 
+export interface ReflectionQuestion {
+  id: string;
+  text: string;
+}
+
+export interface ReflectionAnswer {
+  questionId: string;
+  userId: string;
+  answer: string;
+  timestamp: string;
+}
+
 // Type-safe API functions
+// NOTE: All functions now require accessToken as a parameter
 export const api = {
   // Health check
-  health: () => apiClient.get(API_ENDPOINTS.health),
+  health: (accessToken?: string) => apiClient.get(API_ENDPOINTS.health, accessToken),
   
   // Journal entries
-  getDumps: () => apiClient.get(API_ENDPOINTS.dumps),
-  getDump: (id: string) => apiClient.get(API_ENDPOINTS.dump(id)),
-  createDump: (data: { content: string; mood?: string; tags?: string[] }) =>
-    apiClient.post(API_ENDPOINTS.dumps, data),
-  updateDump: (id: string, data: { content: string; mood?: string; tags?: string[] }) =>
-    apiClient.put(API_ENDPOINTS.dump(id), data),
-  deleteDump: (id: string) => apiClient.delete(API_ENDPOINTS.dump(id)),
+  getDumps: (accessToken?: string) => apiClient.get(API_ENDPOINTS.dumps, accessToken),
+  getDump: (id: string, accessToken?: string) => apiClient.get(API_ENDPOINTS.dump(id), accessToken),
+  createDump: (data: { content: string; mood?: string; tags?: string[] }, accessToken?: string) =>
+    apiClient.post(API_ENDPOINTS.dumps, data, accessToken),
+  updateDump: (id: string, data: { content: string; mood?: string; tags?: string[] }, accessToken?: string) =>
+    apiClient.put(API_ENDPOINTS.dump(id), data, accessToken),
+  deleteDump: (id: string, accessToken?: string) => apiClient.delete(API_ENDPOINTS.dump(id), accessToken),
   
   // User management
-  getUserProfile: () => apiClient.get(API_ENDPOINTS.userProfile),
-  updateUserProfile: (data: { name?: string; email?: string }) =>
-    apiClient.put(API_ENDPOINTS.userProfile, data),
-  exportUserData: () => apiClient.get(API_ENDPOINTS.userExport),
-  deleteUserAccount: () => apiClient.post(API_ENDPOINTS.userDelete),
-  toggleNotifications: (enabled: boolean) =>
-    apiClient.post(API_ENDPOINTS.userToggleNotifications, { enabled }),
-  updateQuestions: (entryId: string, questions: string[]) =>
-    apiClient.post(API_ENDPOINTS.userUpdateQuestions, { entryId, questions }),
-  toggleFavorite: (entryId: string, question: string) =>
-    apiClient.post(API_ENDPOINTS.userToggleFavorite, { entryId, question }),
-  requestPasswordReset: (email: string) =>
-    apiClient.post(API_ENDPOINTS.userRequestPasswordReset, { email }),
+  getUserProfile: (accessToken?: string) => apiClient.get(API_ENDPOINTS.userProfile, accessToken),
+  updateUserProfile: (data: { name?: string; email?: string }, accessToken?: string) =>
+    apiClient.put(API_ENDPOINTS.userProfile, data, accessToken),
+  exportUserData: (accessToken?: string) => apiClient.get(API_ENDPOINTS.userExport, accessToken),
+  deleteUserAccount: (accessToken?: string) => apiClient.post(API_ENDPOINTS.userDelete, undefined, accessToken),
+  toggleNotifications: (enabled: boolean, accessToken?: string) =>
+    apiClient.post(API_ENDPOINTS.userToggleNotifications, { enabled }, accessToken),
+  updateQuestions: (entryId: string, questions: string[], accessToken?: string) =>
+    apiClient.post(API_ENDPOINTS.userUpdateQuestions, { entryId, questions }, accessToken),
+  toggleFavorite: (entryId: string, question: string, accessToken?: string) =>
+    apiClient.post(API_ENDPOINTS.userToggleFavorite, { entryId, question }, accessToken),
+  requestPasswordReset: (email: string, accessToken?: string) =>
+    apiClient.post(API_ENDPOINTS.userRequestPasswordReset, { email }, accessToken),
   
   // AI features
-  analyzeText: (text: string) => apiClient.post(API_ENDPOINTS.aiAnalyze, { text }),
-  analyzeDump: (content: string) => apiClient.post(API_ENDPOINTS.aiAnalyzeDump, { content }),
-  generateInsights: (entries: any[]) => apiClient.post(API_ENDPOINTS.aiInsights, { entries }),
-  getWeeklySummary: () => apiClient.get(API_ENDPOINTS.aiWeeklySummary),
-  reprocessDumps: (dumpIds: string[]) => apiClient.post(API_ENDPOINTS.aiReprocess, { dumpIds }),
-  getMoodTrends: (period?: string) => apiClient.get(`${API_ENDPOINTS.aiMoodTrends}?period=${period || 'week'}`),
-  analyzeEntry: (content: string) => apiClient.post(API_ENDPOINTS.aiAnalyzeEntry, { content }),
+  analyzeText: (text: string, accessToken?: string) => apiClient.post(API_ENDPOINTS.aiAnalyze, { text }, accessToken),
+  analyzeDump: (content: string, accessToken?: string) => apiClient.post(API_ENDPOINTS.aiAnalyzeDump, { content }, accessToken),
+  generateInsights: (entries: any[], accessToken?: string) => apiClient.post(API_ENDPOINTS.aiInsights, { entries }, accessToken),
+  getWeeklySummary: (accessToken?: string) => apiClient.get(API_ENDPOINTS.aiWeeklySummary, accessToken),
+  reprocessDumps: (dumpIds: string[], accessToken?: string) => apiClient.post(API_ENDPOINTS.aiReprocess, { dumpIds }, accessToken),
+  getMoodTrends: (period?: string, accessToken?: string) => apiClient.get(`${API_ENDPOINTS.aiMoodTrends}?period=${period || 'week'}`, accessToken),
+  analyzeEntry: (content: string, accessToken?: string) => apiClient.post(API_ENDPOINTS.aiAnalyzeEntry, { content }, accessToken),
   
   // Statistics
-  startTrial: () => apiClient.post(API_ENDPOINTS.statsStartTrial),
-  getMoodHistory: () => apiClient.get(API_ENDPOINTS.statsMoodHistory),
-  getKeywords: () => apiClient.get(API_ENDPOINTS.statsKeywords),
-  getWeeklyStats: () => apiClient.get(API_ENDPOINTS.statsWeekly),
+  startTrial: (accessToken?: string) => apiClient.post(API_ENDPOINTS.statsStartTrial, undefined, accessToken),
+  getMoodHistory: (accessToken?: string) => apiClient.get(API_ENDPOINTS.statsMoodHistory, accessToken),
+  getKeywords: (accessToken?: string) => apiClient.get(API_ENDPOINTS.statsKeywords, accessToken),
+  getWeeklyStats: (accessToken?: string) => apiClient.get(API_ENDPOINTS.statsWeekly, accessToken),
   
   // Stripe payments
-  createCheckoutSession: () => apiClient.post(API_ENDPOINTS.stripeCreateCheckout),
-  getSubscriptionStatus: () => apiClient.get(API_ENDPOINTS.stripeSubscriptionStatus),
-  cancelSubscription: () => apiClient.post(API_ENDPOINTS.stripeCancelSubscription),
-  resumeSubscription: () => apiClient.post(API_ENDPOINTS.stripeResumeSubscription),
-  createCustomerPortalSession: () => apiClient.post(API_ENDPOINTS.stripeCustomerPortal),
+  createCheckoutSession: async (accessToken: string): Promise<string> => {
+    const response = await fetch(`${API_BASE_URL}/api/stripe/checkout-session`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to create checkout session');
+    const data = await response.json();
+    return data.url;
+  },
+  createCustomerPortal: async (accessToken: string): Promise<string> => {
+    const response = await fetch(`${API_BASE_URL}/api/stripe/customer-portal`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to create customer portal');
+    const data = await response.json();
+    return data.url;
+  },
+  getSubscriptionStatus: async (accessToken: string): Promise<'active' | 'inactive'> => {
+    const response = await fetch(`${API_BASE_URL}/api/stripe/status`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to get subscription status');
+    const data = await response.json();
+    return data.status;
+  },
+  cancelSubscription: (accessToken?: string) => apiClient.post(API_ENDPOINTS.stripeCancelSubscription, undefined, accessToken),
+  resumeSubscription: (accessToken?: string) => apiClient.post(API_ENDPOINTS.stripeResumeSubscription, undefined, accessToken),
+  createCustomerPortalSession: (accessToken?: string) => apiClient.post(API_ENDPOINTS.stripeCustomerPortal, undefined, accessToken),
   
   // Notifications
-  checkDailyNotifications: () => apiClient.get(API_ENDPOINTS.notificationsDailyCheck),
-  saveNotificationToken: (token: string) => apiClient.post(API_ENDPOINTS.notificationsToken, { token }),
-  testNotification: (userId?: string, token?: string) => 
-    apiClient.post(API_ENDPOINTS.notificationsTest, { userId, token }),
+  checkDailyNotifications: (accessToken?: string) => apiClient.get(API_ENDPOINTS.notificationsDailyCheck, accessToken),
+  saveNotificationToken: (token: string, accessToken?: string) => apiClient.post(API_ENDPOINTS.notificationsToken, { token }, accessToken),
+  testNotification: (userId?: string, token?: string, accessToken?: string) => 
+    apiClient.post(API_ENDPOINTS.notificationsTest, { userId, token }, accessToken),
   
   // Weekly stats
-  getWeeklyStatsData: () => apiClient.get(API_ENDPOINTS.weeklyStats),
+  getWeeklyStatsData: (accessToken?: string) => apiClient.get(API_ENDPOINTS.weeklyStats, accessToken),
+  getWeeklyMoodStats: async (accessToken: string): Promise<MoodStat[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/users/mood-history`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to fetch weekly mood stats');
+    const data = await response.json();
+    return data.stats || [];
+  },
+  getGeminiInsights: async (text: string, accessToken: string): Promise<GeminiInsights> => {
+    const response = await fetch(`${API_BASE_URL}/api/insights/analyze-dump`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ text }),
+    });
+    if (!response.ok) throw new Error('Failed to fetch Gemini insights');
+    return await response.json();
+  },
+  getFavorites: async (accessToken: string): Promise<string[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/favorites`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to fetch favorites');
+    const data = await response.json();
+    return data.favorites || [];
+  },
+  addFavorite: async (questionId: string, accessToken: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/api/favorites`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ questionId }),
+    });
+    if (!response.ok) throw new Error('Failed to add favorite');
+  },
+  removeFavorite: async (questionId: string, accessToken: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/api/favorites/${questionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to remove favorite');
+  },
+  getRecentInsights: async (accessToken: string): Promise<GeminiInsightsWithDate[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/users/recent-insights`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to fetch recent insights');
+    const data = await response.json();
+    return data.insights || [];
+  },
+  getReflectionQuestions: async (accessToken: string): Promise<ReflectionQuestion[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/reflections`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to fetch reflection questions');
+    const data = await response.json();
+    return data.questions || [];
+  },
+  saveReflectionAnswer: async (questionId: string, answer: string, accessToken: string): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/api/reflections/answer`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ questionId, answer }),
+    });
+    if (!response.ok) throw new Error('Failed to save reflection answer');
+  },
+  getReflectionAnswers: async (accessToken: string): Promise<ReflectionAnswer[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/reflections/answers`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Failed to fetch reflection answers');
+    const data = await response.json();
+    return data.answers || [];
+  },
 };
 
 export default api; 

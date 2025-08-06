@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { getToken, onMessage, MessagePayload } from 'firebase/messaging';
 import { messaging } from '@/lib/firebase-config';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
 import toast from 'react-hot-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 interface UseNotificationsResult {
   isPermissionGranted: boolean;
@@ -48,7 +48,7 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ payload, onClose 
 export const useNotifications = (): UseNotificationsResult => {
   const [isPermissionGranted, setIsPermissionGranted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const supabase = useSupabaseClient();
+  const { user } = useAuth();
 
   useEffect(() => {
     const initializeNotifications = async () => {
@@ -81,8 +81,9 @@ export const useNotifications = (): UseNotificationsResult => {
           });
 
           // Save token to Supabase
-          const { data: { user } } = await supabase.auth.getUser();
           if (user) {
+            // Use supabase client directly for DB update, but get user from context
+            const { supabase } = await import('@/lib/supabase');
             const { error } = await supabase
               .from('profiles')
               .update({ notification_token: token })
@@ -112,7 +113,7 @@ export const useNotifications = (): UseNotificationsResult => {
     };
 
     initializeNotifications();
-  }, [supabase]);
+  }, [user]);
 
   const requestPermission = async (): Promise<void> => {
     try {

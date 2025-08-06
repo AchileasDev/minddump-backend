@@ -1,20 +1,18 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
-import SkeletonLoader from './SkeletonLoader'; // Assuming SkeletonLoader is in the same directory
+import SkeletonLoader from './SkeletonLoader';
+import { useAuth } from '@/hooks/useAuth';
 
 // This function will be called by react-query to fetch the data
-const fetchInsights = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
-  
+const fetchInsights = async (accessToken: string, userId: string) => {
   // First, fetch entries to pass to the insights endpoint
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { supabase } = await import('@/lib/supabase');
   const { data: entries, error: entriesError } = await supabase
     .from('journal_entries')
     .select('content,created_at')
-    .eq('user_id', session.user.id)
+    .eq('user_id', userId)
     .gte('created_at', since)
     .order('created_at', { ascending: false })
     .limit(30);
@@ -27,7 +25,7 @@ const fetchInsights = async () => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
+      'Authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ entries }),
   });
@@ -41,9 +39,17 @@ const fetchInsights = async () => {
 };
 
 const InsightsCard = () => {
+  const { user } = useAuth();
+  const accessToken = user?.access_token;
+  const userId = user?.id;
+
   const { data: insights, isLoading, isError, error } = useQuery({
-    queryKey: ['insights'],
-    queryFn: fetchInsights,
+    queryKey: ['insights', userId],
+    queryFn: () => {
+      if (!accessToken || !userId) throw new Error('Not authenticated');
+      return fetchInsights(accessToken, userId);
+    },
+    enabled: !!accessToken && !!userId,
     staleTime: 1000 * 60 * 60, // 1 hour
     retry: 1, // Retry once on failure
   });

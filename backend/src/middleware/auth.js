@@ -1,57 +1,20 @@
 const { createClient } = require('@supabase/supabase-js');
-
-// Initialize Supabase Admin Client using service role key
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Middleware: requireAuth
-const requireAuth = async (req, res, next) => {
-  // Get token from Authorization header
-  const token = req.header('Authorization')?.replace('Bearer ', '');
-  if (!token) {
-    return res.status(401).json({ 
-      error: 'Authentication required',
-      message: 'No authentication token provided' 
-    });
-  }
+module.exports = async function (req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+  const token = authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Invalid token format' });
 
-  try {
-    // Verify token with Supabase
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return res.status(401).json({ error: 'Invalid token' });
 
-    if (authError || !user) {
-      return res.status(401).json({ 
-        error: 'Invalid token',
-        message: 'Invalid or expired authentication token' 
-      });
-    }
-
-    // Fetch the user's profile from the 'profiles' table to get the role and other details
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !profile) {
-      return res.status(401).json({ 
-        error: 'Profile not found',
-        message: 'User profile not found' 
-      });
-    }
-
-    // Attach the full user profile (including role) to the request object
-    req.user = profile;
-    next();
-  } catch (error) {
-    console.error('Authentication error:', error);
-    res.status(500).json({ 
-      error: 'Authentication failed',
-      message: 'Authentication failed due to an unexpected error' 
-    });
-  }
+  req.user = data.user;
+  next();
 };
 
 // Middleware: requirePremium

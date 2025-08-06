@@ -12,6 +12,7 @@ const {
   getAllUsers,
   updateUserRole
 } = require('../controllers/userController');
+const { getRecentInsightsController } = require('../controllers/insightsController');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -153,6 +154,47 @@ router.post('/toggle-favorite', validateRequired(['entryId', 'question']), async
     next(error);
   }
 });
+
+// GET /api/users/mood-history - Weekly mood stats for authenticated user
+router.get('/mood-history', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Get last 7 days
+    const since = new Date();
+    since.setDate(since.getDate() - 6); // includes today
+    const sinceISO = since.toISOString().split('T')[0];
+
+    // Query all dumps for user in last 7 days
+    const { data, error } = await supabase
+      .from('dumps')
+      .select('created_at, mood')
+      .eq('user_id', userId)
+      .gte('created_at', sinceISO)
+      .order('created_at', { ascending: true });
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.json({ stats: [] });
+
+    // Group by day and average mood
+    const statsMap = {};
+    data.forEach(entry => {
+      const date = entry.created_at.split('T')[0];
+      if (!statsMap[date]) statsMap[date] = [];
+      if (typeof entry.mood === 'number') statsMap[date].push(entry.mood);
+    });
+    const stats = Object.entries(statsMap).map(([date, moods]) => ({
+      date,
+      averageMood: moods.length ? (moods.reduce((a, b) => a + b, 0) / moods.length) : null,
+    })).sort((a, b) => a.date.localeCompare(b.date));
+
+    return res.json({ stats });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to fetch mood history' });
+  }
+});
+
+// GET /api/users/recent-insights - Protected route
+router.get('/recent-insights', requireAuth, getRecentInsightsController);
 
 // Admin routes
 router.use(requireAdmin);

@@ -1,9 +1,9 @@
 import React from 'react';
 import { Line } from 'react-chartjs-2';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 import SkeletonLoader from './SkeletonLoader';
+import { useAuth } from '@/hooks/useAuth';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,13 +27,10 @@ ChartJS.register(
   Filler
 );
 
-const fetchMoodHistory = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Not authenticated');
-
+const fetchMoodHistory = async (accessToken: string) => {
   const response = await fetch('/api/users/mood-history', {
     headers: {
-      'Authorization': `Bearer ${session.access_token}`,
+      'Authorization': `Bearer ${accessToken}`,
     },
   });
 
@@ -44,9 +41,16 @@ const fetchMoodHistory = async () => {
 };
 
 const MoodChart = () => {
+  const { user } = useAuth();
+  const accessToken = user?.access_token;
+
   const { data: moodHistory, isLoading, isError, error } = useQuery({
-    queryKey: ['moodHistory'],
-    queryFn: fetchMoodHistory,
+    queryKey: ['moodHistory', accessToken],
+    queryFn: () => {
+      if (!accessToken) throw new Error('Not authenticated');
+      return fetchMoodHistory(accessToken);
+    },
+    enabled: !!accessToken,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 

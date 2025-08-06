@@ -3,11 +3,10 @@ import { useRouter } from 'next/router';
 import Link from 'next/link';
 import Head from 'next/head';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 
 export default function ResetPasswordPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, updatePassword } = useAuth();
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -36,15 +35,9 @@ export default function ResetPasswordPage() {
     setIsResetting(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      
-      if (error) {
-        throw error;
-      }
-      
+      await updatePassword(password);
       setSuccess(true);
       toast.success('Password updated successfully!');
-      
       // Redirect to login after a short delay
       setTimeout(() => {
         router.push('/login');
