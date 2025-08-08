@@ -1,19 +1,24 @@
 {
   "name": "minddump-monorepo",
-  "version": "1.0.0",
-  "description": "MindDump Monorepo",
   "private": true,
-  "workspaces": [
-    "frontend",
-    "backend"
-  ],
+  "version": "1.0.0",
+  "description": "Monorepo for MindDump: Next.js frontend and Node.js/Express backend",
   "scripts": {
-    "dev:frontend": "npm run dev --workspace=frontend",
-    "dev:backend": "npm run dev --workspace=backend"
+    "install:all": "npm --prefix frontend install && npm --prefix backend install",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend run build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "start:frontend": "npm --prefix frontend start",
+    "start:backend": "npm --prefix backend start",
+    "start": "concurrently \"npm run start:frontend\" \"npm run start:backend\""
   },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "firebase": "^11.9.1"
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
